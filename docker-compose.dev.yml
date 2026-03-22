@@ -1,0 +1,67 @@
+# docker-compose.dev.yml - Development environment
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Development overrides
+  pg_db:
+    environment:
+      POSTGRES_PASSWORD: odoo_dev
+    healthcheck:
+      disable: true
+
+  odoo_app:
+    env_file:
+      - .env.local
+    environment:
+      ODOO_LOGLEVEL: debug
+    volumes:
+      - ./odoo_custom_module:/mnt/extra-addons/custom_module
+    ports:
+      - "8069:8069"
+
+  etl_service:
+    env_file:
+      - .env.local
+    volumes:
+      - ./etl_service:/app
+      - ./etl_service/data:/app/data
+
+  api_gateway:
+    env_file:
+      - .env.local
+    volumes:
+      - ./api_gateway_service/src:/app/src
+    ports:
+      - "8000:8000"
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    env_file:
+      - .env.local
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    command: npm run dev
+
+  nginx:
+    profiles:
+      - production
+
+  prometheus:
+    profiles:
+      - monitoring
+
+  grafana:
+    profiles:
+      - monitoring
+
+  node_exporter:
+    profiles:
+      - monitoring
+
+  postgres_exporter:
+    profiles:
+      - monitoring

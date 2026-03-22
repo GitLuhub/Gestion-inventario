@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="module_category" model="ir.module.category">
+            <field name="name">Gestión de Inventario</field>
+            <field name="description">Módulo avanzado de gestión de inventario</field>
+            <field name="sequence">15</field>
+        </record>
+
+        <record id="group_inventory_manager" model="res.groups">
+            <field name="name">Gestor de Inventario</field>
+            <field name="category_id" ref="module_category"/>
+            <field name="implied_ids" eval="[(4, ref('stock.group_stock_manager'))]"/>
+            <field name="comment">Puede gestionar todo el inventario y realizar ajustes.</field>
+        </record>
+
+        <record id="group_inventory_operator" model="res.groups">
+            <field name="name">Operador de Inventario</field>
+            <field name="category_id" ref="module_category"/>
+            <field name="implied_ids" eval="[(4, ref('stock.group_stock_user'))]"/>
+            <field name="comment">Puede realizar operaciones de inventario pero no ajustes.</field>
+        </record>
+
+        <record id="group_inventory_viewer" model="res.groups">
+            <field name="name">Visor de Inventario</field>
+            <field name="category_id" ref="module_category"/>
+            <field name="implied_ids" eval="[(4, ref('stock.group_stock_viewer'))]"/>
+            <field name="comment">Solo puede visualizar el inventario.</field>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_product_template_form_inventory" model="ir.ui.view">
+            <field name="name">product.template.form.inventory</field>
+            <field name="model">product.template</field>
+            <field name="inherit_id" ref="product.product_template_form_view"/>
+            <field name="arch" type="xml">
+                <xpath expr="//page[@name='inventory']" position="before">
+                    <page name="inventory_advanced" string="Stock y Almacén">
+                        <group col="4">
+                            <group string="Niveles de Stock">
+                                <field name="min_stock_level"/>
+                                <field name="max_stock_level"/>
+                                <field name="reorder_point" readonly="1"/>
+                            </group>
+                            <group string="Control de Inventario">
+                                <field name="last_inventory_date"/>
+                                <field name="inventory_count_frequency"/>
+                                <field name="inventory_valuation"/>
+                            </group>
+                        </group>
+                        <group string="Información de Lotes" col="2">
+                            <group>
+                                <field name="lot_count" readonly="1"/>
+                            </group>
+                            <group>
+                                <button name="action_view_lots" string="Ver Lotes" type="object" 
+                                        class="oe_link" invisible="lot_count == 0"/>
+                            </group>
+                        </group>
+                        <group string="Stock por Ubicación" col="1">
+                            <field name="product_stock_count" invisible="1"/>
+                            <button name="action_view_quants" string="Ver Stock" type="object" 
+                                    class="oe_link" invisible="product_stock_count == 0"/>
+                        </group>
+                    </page>
+                </xpath>
+            </field>
+        </record>
+
+        <record id="view_product_product_tree_inventory" model="ir.ui.view">
+            <field name="name">product.product.tree.inventory</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="product.product_product_tree_view"/>
+            <field name="arch" type="xml">
+                <field name="standard_price" position="after">
+                    <field name="qty_available" optional="show"/>
+                    <field name="virtual_available" optional="show"/>
+                </field>
+            </field>
+        </record>
+
+        <record id="view_product_brand_form" model="ir.ui.view">
+            <field name="name">product.brand.form</field>
+            <field name="model">product.brand</field>
+            <field name="arch" type="xml">
+                <form string="Marca de Producto">
+                    <sheet>
+                        <group col="4">
+                            <group>
+                                <field name="name"/>
+                                <field name="description"/>
+                            </group>
+                            <group>
+                                <field name="logo" widget="image" class="oe_avatar"/>
+                                <field name="active"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Productos" name="products">
+                                <field name="product_ids"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="view_product_brand_tree" model="ir.ui.view">
+            <field name="name">product.brand.tree</field>
+            <field name="model">product.brand</field>
+            <field name="arch" type="xml">
+                <tree>
+                    <field name="name"/>
+                    <field name="description"/>
+                    <field name="product_count"/>
+                    <field name="active"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="action_product_brand" model="ir.actions.act_window">
+            <field name="name">Marcas de Productos</field>
+            <field name="res_model">product.brand</field>
+            <field name="view_mode">tree,form</field>
+        </record>
+
+        <menuitem id="menu_product_brand" 
+                  name="Marcas" 
+                  parent="stock.menu_stock_inventory_control"
+                  action="action_product_brand"
+                  sequence="5"/>
+    </data>
+</odoo>

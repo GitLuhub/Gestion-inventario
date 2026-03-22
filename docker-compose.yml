@@ -1,0 +1,333 @@
+# docker-compose.yml - Sistema de Gestión de Inventario Avanzado
+# Odoo 16.0 LTS + ETL + FastAPI Gateway + Next.js Frontend
+
+# ----------------------------------------------------
+# 1. Definición de volúmenes persistentes
+# ----------------------------------------------------
+volumes:
+  pg_data:
+    name: inventory_pg_data
+  odoo_data:
+    name: inventory_odoo_data
+  odoo_addons:
+    name: inventory_odoo_addons
+  etl_data:
+    name: inventory_etl_data
+  prometheus_data:
+    name: inventory_prometheus_data
+  grafana_data:
+    name: inventory_grafana_data
+
+# ----------------------------------------------------
+# 2. Definición de secretos (para producción usar Docker Swarm secrets)
+# Para desarrollo local, usamos variables de entorno
+# ----------------------------------------------------
+
+# ----------------------------------------------------
+# 3. Redes
+# ----------------------------------------------------
+networks:
+  backend-network:
+    driver: bridge
+    name: inventory_backend
+
+# ----------------------------------------------------
+# 4. Servicios
+# ----------------------------------------------------
+services:
+
+  # ----------------------------------------------------
+  # 4.1. PostgreSQL Database
+  # ----------------------------------------------------
+  pg_db:
+    image: postgres:15-alpine
+    container_name: inventory_pg_db
+    hostname: pg_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-odoo_db}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_pass}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d odoo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  # ----------------------------------------------------
+  # 4.2. ODOO Application
+  # ----------------------------------------------------
+  odoo_app:
+    build:
+      context: .
+      dockerfile: ./docker/odoo/Dockerfile
+    image: inventory-odoo:16.0
+    container_name: inventory_odoo_app
+    hostname: odoo_app
+    env_file:
+      - .env
+    environment:
+      HOST: pg_db
+      USER: ${POSTGRES_USER:-odoo}
+      PASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_pass}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_pass}
+      ODOO_MASTER_PASSWORD: ${ODOO_MASTER_PASSWORD:-admin}
+      ODOO_LOGLEVEL: ${ODOO_LOGLEVEL:-info}
+      ODOO_WORKERS: 2
+      ODOO_LIMIT_TIME_CPU: 600
+      ODOO_LIMIT_TIME_REAL: 1200
+      ODOO_MAX_CRON_THREADS: 1
+    volumes:
+      - odoo_data:/var/lib/odoo
+      - odoo_addons:/mnt/extra-addons
+    networks:
+      - backend-network
+    ports:
+      - "8069:8069"
+      - "8071:8071"
+      - "8072:8072"
+    depends_on:
+      pg_db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  # ----------------------------------------------------
+  # 4.3. ETL Service (Python)
+  # ----------------------------------------------------
+  etl_service:
+    build:
+      context: ./etl_service
+      dockerfile: Dockerfile
+    image: inventory-etl:latest
+    container_name: inventory_etl_service
+    hostname: etl_service
+    env_file:
+      - .env
+    environment:
+      ODOO_URL: http://odoo_app:8069
+      ODOO_DB: ${POSTGRES_DB:-odoo_db}
+      ODOO_USER: ${ODOO_ETL_USER:-admin}
+      ODOO_PASSWORD: ${ODOO_ETL_PASSWORD:-admin}
+      EXTERNAL_API_URL: "http://external-api:8080/api/v1"
+      EXTERNAL_API_KEY: ${EXTERNAL_API_KEY:-local_key}
+      ETL_DATA_PATH: /app/data
+      ETL_LOG_LEVEL: INFO
+      ETL_SCHEDULE_CRON: "*/15 * * * *"
+    volumes:
+      - etl_data:/app/data
+    networks:
+      - backend-network
+    depends_on:
+      - odoo_app
+    command: /bin/sh -c "cron && tail -f /var/log/cron.log"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # ----------------------------------------------------
+  # 4.4. API Gateway FastAPI
+  # ----------------------------------------------------
+  api_gateway:
+    build:
+      context: ./api_gateway_service
+      dockerfile: Dockerfile
+    image: inventory-api-gateway:latest
+    container_name: inventory_api_gateway
+    hostname: api_gateway
+    env_file:
+      - .env
+    environment:
+      ODOO_URL: http://odoo_app:8069
+      ODOO_DB: ${POSTGRES_DB:-odoo_db}
+      ODOO_USER: ${ODOO_ADMIN_USER:-admin}
+      ODOO_PASSWORD: ${ODOO_MASTER_PASSWORD:-admin}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_jwt_secret_key_change_in_production}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      LOG_LEVEL: info
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:8080"
+    ports:
+      - "8000:8000"
+    networks:
+      - backend-network
+    depends_on:
+      - odoo_app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # ----------------------------------------------------
+  # 4.5. Frontend Next.js
+  # ----------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: inventory-frontend:latest
+    container_name: inventory_frontend
+    hostname: frontend
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://api_gateway:8000
+      NEXT_PUBLIC_APP_NAME: "Gestión de Inventario"
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    networks:
+      - backend-network
+    depends_on:
+      - api_gateway
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # ----------------------------------------------------
+  # 4.6. Nginx Reverse Proxy
+  # ----------------------------------------------------
+  nginx:
+    image: nginx:stable-alpine
+    container_name: inventory_nginx
+    hostname: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./secrets/certs:/etc/nginx/certs:ro
+    networks:
+      - backend-network
+    depends_on:
+      - odoo_app
+      - api_gateway
+      - frontend
+    healthcheck:
+      test: ["CMD", "nginx", "-t", "-s", "exec:/bin/sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ----------------------------------------------------
+  # 4.7. Prometheus (Monitoreo)
+  # ----------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: inventory_prometheus
+    hostname: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - backend-network
+    restart: unless-stopped
+
+  # ----------------------------------------------------
+  # 4.8. Grafana (Dashboards)
+  # ----------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: inventory_grafana
+    hostname: grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s:3001"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - backend-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # ----------------------------------------------------
+  # 4.9. Node Exporter (Métricas Host)
+  # ----------------------------------------------------
+  node_exporter:
+    image: prom/node-exporter:latest
+    container_name: inventory_node_exporter
+    hostname: node_exporter
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - backend-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # ----------------------------------------------------
+  # 4.10. PostgreSQL Exporter
+  # ----------------------------------------------------
+  postgres_exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    container_name: inventory_postgres_exporter
+    hostname: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: postgresql://odoo@pg_db:5432/odoo_db?sslmode=disable
+    networks:
+      - backend-network
+    depends_on:
+      pg_db:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - monitoring

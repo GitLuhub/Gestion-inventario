@@ -1,0 +1,22 @@
+# ===================================================================
+# Cronjob para el Servicio ETL
+# ===================================================================
+# Ejecuta el pipeline ETL cada 15 minutos
+# ===================================================================
+
+# Configurar el cronjob
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+MAILTO=""
+
+# Pipeline ETL - Cada 15 minutos
+*/15 * * * * etl python /app/src/main.py >> /var/log/etl.log 2>&1
+
+# Log de última ejecución (para debugging)
+0 * * * * etl echo "Last ETL run: $(date)" >> /var/log/etl_last_run.log 2>&1
+
+# Verificación de salud del ETL - Cada hora
+0 * * * * etl python /app/src/health_check.py >> /var/log/etl_health.log 2>&1
+
+# Limpieza de logs antiguos - Diario a las 3am
+0 3 * * * root find /var/log/etl*.log -mtime +7 -delete
