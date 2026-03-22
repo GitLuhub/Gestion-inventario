@@ -12,27 +12,10 @@
                             <group string="Niveles de Stock">
                                 <field name="min_stock_level"/>
                                 <field name="max_stock_level"/>
-                                <field name="reorder_point" readonly="1"/>
                             </group>
-                            <group string="Control de Inventario">
-                                <field name="last_inventory_date"/>
-                                <field name="inventory_count_frequency"/>
-                                <field name="inventory_valuation"/>
+                            <group string="Información">
+                                <field name="manufacturer_ref"/>
                             </group>
-                        </group>
-                        <group string="Información de Lotes" col="2">
-                            <group>
-                                <field name="lot_count" readonly="1"/>
-                            </group>
-                            <group>
-                                <button name="action_view_lots" string="Ver Lotes" type="object" 
-                                        class="oe_link" invisible="lot_count == 0"/>
-                            </group>
-                        </group>
-                        <group string="Stock por Ubicación" col="1">
-                            <field name="product_stock_count" invisible="1"/>
-                            <button name="action_view_quants" string="Ver Stock" type="object" 
-                                    class="oe_link" invisible="product_stock_count == 0"/>
                         </group>
                     </page>
                 </xpath>
@@ -46,7 +29,6 @@
             <field name="arch" type="xml">
                 <field name="standard_price" position="after">
                     <field name="qty_available" optional="show"/>
-                    <field name="virtual_available" optional="show"/>
                 </field>
             </field>
         </record>

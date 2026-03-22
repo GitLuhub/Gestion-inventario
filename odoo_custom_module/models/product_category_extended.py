@@ -17,33 +17,6 @@ class ProductCategory(models.Model):
         index=True,
         readonly=True,
     )
-    product_count = fields.Integer(
-        string='Cantidad de Productos',
-        compute='_compute_product_count',
-        store=True,
-    )
-    average_cost = fields.Float(
-        string='Costo Promedio',
-        compute='_compute_average_cost',
-        store=False,
-    )
-    total_value = fields.Float(
-        string='Valor Total',
-        compute='_compute_total_value',
-        store=False,
-    )
-    parent_id = fields.Many2one(
-        'product.category',
-        string='Categoría Padre',
-        index=True,
-        ondelete='cascade',
-        domain="[('id', '!=', active_id)]" if 'active_id' in self.env.context else [],
-    )
-    child_ids = fields.One2many(
-        'product.category',
-        'parent_id',
-        string='Categorías Hijas',
-    )
     image = fields.Binary(
         string='Imagen',
         attachment=True,
@@ -53,40 +26,6 @@ class ProductCategory(models.Model):
         default=True,
         help='Si desactiva esta categoría, no aparecerá en las listas.',
     )
-    
-    @api.depends('product_ids', 'child_ids.product_count')
-    def _compute_product_count(self):
-        for category in self:
-            direct_count = len(category.product_ids)
-            child_count = sum(category.child_ids.mapped('product_count'))
-            category.product_count = direct_count + child_count
-    
-    @api.depends('product_ids.standard_price', 'product_ids.qty_available')
-    def _compute_average_cost(self):
-        for category in self:
-            products = category.product_ids.filtered(
-                lambda p: p.type == 'product' and p.qty_available > 0
-            )
-            if products:
-                total_value = sum(
-                    p.standard_price * p.qty_available 
-                    for p in products
-                )
-                total_qty = sum(p.qty_available for p in products)
-                category.average_cost = total_value / total_qty if total_qty else 0
-            else:
-                category.average_cost = 0
-    
-    @api.depends('product_ids.standard_price', 'product_ids.qty_available')
-    def _compute_total_value(self):
-        for category in self:
-            products = category.product_ids.filtered(
-                lambda p: p.type == 'product'
-            )
-            category.total_value = sum(
-                p.standard_price * p.qty_available 
-                for p in products
-            )
     
     @api.model
     def name_create(self, name):
@@ -111,8 +50,8 @@ class ProductCategory(models.Model):
     def get_subcategories(self, include_self=False):
         """Retorna todas las subcategorías."""
         self.ensure_one()
-        categories = self.child_ids
-        for child in self.child_ids:
+        categories = self.child_id
+        for child in self.child_id:
             categories |= child.get_subcategories()
         
         if include_self:

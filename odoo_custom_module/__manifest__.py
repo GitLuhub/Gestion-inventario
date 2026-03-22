@@ -24,7 +24,7 @@
         - RF6: Traslados Internos
         - RF7: Informes de Inventario
     """,
-    "author": "Inventory Team",
+    "author": "Luis Brito",
     "website": "https://inventory.local",
     "license": "LGPL-3",
     "depends": [
