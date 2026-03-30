@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import time
 from datetime import datetime
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import pybreaker
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -62,6 +63,19 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(pybreaker.CircuitBreakerError)
+async def circuit_breaker_handler(request: Request, exc: pybreaker.CircuitBreakerError):
+    """Convierte CircuitBreakerError en HTTP 503 con mensaje claro (GAP-09)."""
+    logger.warning("circuit_breaker_open", extra={"path": str(request.url.path)})
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Servicio Odoo no disponible temporalmente. Intente de nuevo en unos segundos.",
+            "error_type": "circuit_breaker_open",
+        },
+    )
 
 
 app.add_middleware(

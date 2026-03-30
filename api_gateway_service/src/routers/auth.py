@@ -8,6 +8,7 @@ from ..utils.auth import (
     get_current_user,
     verify_refresh_token,
 )
+from ..utils.audit import log_audit
 from ..utils.logger import get_logger
 from ..utils.odoo_client import get_odoo_client, OdooClient
 from ..utils.rate_limiter import limiter
@@ -75,6 +76,15 @@ async def login(
         _set_refresh_cookie(response, refresh_token)
 
         logger.info("login_success", extra={"username": form_data.username, "uid": uid})
+        log_audit(
+            action="auth.login",
+            user_id=uid,
+            resource="session",
+            resource_id=None,
+            ip=request.client.host if request.client else "-",
+            request_id=request.headers.get("X-Request-ID", "-"),
+            status="success",
+        )
 
         return TokenResponse(
             access_token=access_token,
@@ -158,9 +168,19 @@ async def get_current_user_info(
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     response: Response,
     current_user: dict = Depends(get_current_user),
 ):
     _clear_refresh_cookie(response)
     logger.info("logout", extra={"username": current_user.get("username")})
+    log_audit(
+        action="auth.logout",
+        user_id=current_user.get("user_id"),
+        resource="session",
+        resource_id=None,
+        ip=request.client.host if request.client else "-",
+        request_id=request.headers.get("X-Request-ID", "-"),
+        status="success",
+    )
     return {"message": "Logout exitoso"}
