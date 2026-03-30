@@ -44,6 +44,11 @@
                         <group>
                             <field name="notes"/>
                         </group>
+                        <group string="Resumen de Discrepancias">
+                            <field name="total_discrepancy" readonly="1"/>
+                            <field name="total_surplus" readonly="1"/>
+                            <field name="total_shortage" readonly="1"/>
+                        </group>
                         <notebook>
                             <page string="Líneas de Ajuste" name="lines">
                                 <field name="line_ids">

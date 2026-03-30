@@ -282,6 +282,48 @@ class TestStockInventoryAdjustment(TransactionCase):
         with self.assertRaises(UserError):
             adj.action_validate()
 
+    def test_total_surplus_and_shortage(self):
+        """total_surplus acumula excesos y total_shortage acumula faltantes."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        product2 = self.env['product.product'].create({
+            'name': 'Product Surplus',
+            'type': 'product',
+        })
+        location2 = self.env['stock.location'].create({
+            'name': 'Location 2',
+            'usage': 'internal',
+        })
+        # Línea con +5 (exceso)
+        self.AdjustmentLine.create({
+            'adjustment_id': adj.id,
+            'product_id': self.product.id,
+            'location_id': self.location.id,
+            'current_qty': 10.0,
+            'expected_qty': 15.0,
+        })
+        # Línea con -3 (faltante)
+        self.AdjustmentLine.create({
+            'adjustment_id': adj.id,
+            'product_id': product2.id,
+            'location_id': location2.id,
+            'current_qty': 8.0,
+            'expected_qty': 5.0,
+        })
+        self.assertEqual(adj.total_surplus, 5.0)
+        self.assertEqual(adj.total_shortage, 3.0)
+        self.assertEqual(adj.total_discrepancy, 8.0)
+
+    def test_total_surplus_and_shortage_zero_when_no_lines(self):
+        """Sin líneas, los tres totales son 0."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        self.assertEqual(adj.total_surplus, 0.0)
+        self.assertEqual(adj.total_shortage, 0.0)
+        self.assertEqual(adj.total_discrepancy, 0.0)
+
 
 class TestStockOperations(TransactionCase):
     """Tests de integración para RF3 (Recepciones), RF4 (Entregas) y RF6 (Traslados)."""

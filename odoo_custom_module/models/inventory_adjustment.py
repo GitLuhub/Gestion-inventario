@@ -75,6 +75,18 @@ class StockInventoryAdjustment(models.Model):
         compute='_compute_totals',
         store=True,
     )
+    total_surplus = fields.Float(
+        string='Total Exceso',
+        compute='_compute_totals',
+        store=True,
+        help='Suma de diferencias positivas (stock contado > stock real).',
+    )
+    total_shortage = fields.Float(
+        string='Total Faltante',
+        compute='_compute_totals',
+        store=True,
+        help='Suma de diferencias negativas en valor absoluto (stock contado < stock real).',
+    )
 
     move_ids = fields.Many2many(
         'stock.move',
@@ -111,9 +123,10 @@ class StockInventoryAdjustment(models.Model):
     @api.depends('line_ids.difference_qty')
     def _compute_totals(self):
         for adjustment in self:
-            adjustment.total_discrepancy = sum(
-                abs(qty) for qty in adjustment.line_ids.mapped('difference_qty')
-            )
+            diffs = adjustment.line_ids.mapped('difference_qty')
+            adjustment.total_discrepancy = sum(abs(d) for d in diffs)
+            adjustment.total_surplus = sum(d for d in diffs if d > 0)
+            adjustment.total_shortage = sum(abs(d) for d in diffs if d < 0)
 
     def action_start(self):
         """Inicia el proceso de ajuste."""

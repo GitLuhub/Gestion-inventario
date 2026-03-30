@@ -679,21 +679,16 @@ del producto en la ubicación pero no discriminan por lote.
 
 **Mitigación futura:** Extender el modelo con `lot_id` y filtrar quants por lote.
 
-### 3. Multi-Compañía — Dominio de Ubicaciones Sin Filtro de Compañía ⚠️ Pendiente (BUG-009)
+### 3. Multi-Compañía — Dominio de Ubicaciones Sin Filtro de Compañía ✅ Resuelto (Fase D)
 
-`location_ids` en ajustes usa `domain=[('usage', '=', 'internal')]` sin filtrar por compañía.
-En entornos multi-compañía, un usuario podría seleccionar ubicaciones de otra compañía.
+`location_ids` en ajustes ahora usa `domain="[('usage', '=', 'internal'), ('company_id', 'in', [False, company_id])]"`
+en `inventory_adjustment_views.xml`, impidiendo seleccionar ubicaciones de otras compañías.
 
-**Mitigación planificada (Fase D):** Agregar `('company_id', 'in', [False, company_id])` al dominio
-del campo en `inventory_adjustment_views.xml`.
+### 4. `total_discrepancy` No Diferencia Exceso de Faltante ✅ Resuelto (Fase D)
 
-### 4. `total_discrepancy` No Diferencia Exceso de Faltante ⚠️ Pendiente (Fase D)
-
-El campo muestra la suma de valores absolutos de todas las diferencias. No permite distinguir
-cuánto corresponde a exceso (qty esperada > actual) vs faltante (qty esperada < actual).
-
-**Mitigación planificada (Fase D):** Agregar campos `total_surplus` y `total_shortage` computados
-separadamente en `StockInventoryAdjustment`.
+Se agregaron `total_surplus` (sum de diferencias positivas) y `total_shortage` (sum de diferencias
+negativas en valor absoluto) como campos computed `store=True` en `StockInventoryAdjustment`.
+Los tres campos se muestran en el formulario bajo el grupo "Resumen de Discrepancias".
 
 ### 5. `action_generate_lines` Solo Para Estado Borrador
 
@@ -739,7 +734,7 @@ configura una ubicación de inventario real (`usage='inventory'`) y la asigna a
 | RF4 | Operaciones de Salida (Entregas) | ✅ Cumplido | Menú + acción `action_custom_deliveries` con domain `outgoing` |
 | RF5 | Ajustes de Inventario | ✅ Cumplido | Modelo completo con flujo de estados + wizards |
 | RF6 | Traslados Internos | ✅ Cumplido | Menú + acción `action_custom_internal_transfers` con domain `internal` |
-| RF7 | Informes de Inventario | ⚠️ Parcial | 4 informes activos; dominio "Alertas de Stock Mínimo" usa valor fijo (BUG-008) |
+| RF7 | Informes de Inventario | ✅ Cumplido | 4 informes activos; dominio usa campo `is_low_stock` (BUG-008 resuelto) |
 
 ### Requisitos No Funcionales
 
@@ -856,7 +851,7 @@ completo draft → in_progress → done verificando que se crean `stock.move`.
 
 ---
 
-#### D4 — `total_surplus` / `total_shortage` separados 🔵 BAJA
+#### D4 — `total_surplus` / `total_shortage` separados ✅
 
 **Problema:** `total_discrepancy` oculta si hay exceso o faltante.
 
