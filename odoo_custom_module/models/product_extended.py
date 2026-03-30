@@ -59,9 +59,9 @@ class ProductBrand(models.Model):
         attachment=True,
     )
     product_count = fields.Integer(
-        string='Productos',
+        string='Nº Productos',
         compute='_compute_product_count',
-        store=True,
+        store=False,
     )
     product_ids = fields.One2many(
         'product.template',
@@ -75,5 +75,11 @@ class ProductBrand(models.Model):
     
     @api.depends('product_ids')
     def _compute_product_count(self):
+        count_data = self.env['product.template'].read_group(
+            domain=[('brand_id', 'in', self.ids)],
+            fields=['brand_id'],
+            groupby=['brand_id'],
+        )
+        count_map = {row['brand_id'][0]: row['brand_id_count'] for row in count_data}
         for brand in self:
-            brand.product_count = len(brand.product_ids)
+            brand.product_count = count_map.get(brand.id, 0)
