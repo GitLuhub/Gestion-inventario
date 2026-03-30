@@ -3,20 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import time
-import logging
 from datetime import datetime
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 from .config import settings
+from .middleware import RequestIDMiddleware
 from .routers import auth_router, products_router, inventory_router
 from .schemas import HealthResponse
+from .utils.logger import setup_json_logging, get_logger
 from .utils.odoo_client import get_odoo_client
 
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+setup_json_logging(settings.LOG_LEVEL)
+logger = get_logger(__name__)
 
 REQUEST_COUNT = Counter(
     'api_gateway_requests_total',
@@ -38,11 +36,11 @@ async def lifespan(app: FastAPI):
     try:
         odoo = get_odoo_client()
         if odoo.test_connection():
-            logger.info("Conexión a Odoo establecida")
+            logger.info("odoo_connection_ok")
         else:
-            logger.warning("No se pudo conectar a Odoo")
+            logger.warning("odoo_connection_failed")
     except Exception as e:
-        logger.error(f"Error al conectar a Odoo: {e}")
+        logger.error("odoo_connection_error", extra={"error": str(e)})
     
     yield
     
@@ -65,39 +63,42 @@ app.add_middleware(
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "X-Request-ID"],
 )
+app.add_middleware(RequestIDMiddleware)
 
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    
-    logger.debug(f"Petición: {request.method} {request.url.path}")
-    
+
     response = await call_next(request)
-    
+
     process_time = time.time() - start_time
-    
+
     REQUEST_COUNT.labels(
         method=request.method,
         endpoint=request.url.path,
-        status=response.status_code
+        status=response.status_code,
     ).inc()
-    
+
     REQUEST_LATENCY.labels(
         method=request.method,
-        endpoint=request.url.path
+        endpoint=request.url.path,
     ).observe(process_time)
-    
+
     logger.info(
-        f"{request.method} {request.url.path} - "
-        f"Status: {response.status_code} - "
-        f"Duration: {process_time:.3f}s"
+        "http_request",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "duration_s": round(process_time, 4),
+        },
     )
-    
+
     response.headers["X-Process-Time"] = str(process_time)
-    
+
     return response
 
 

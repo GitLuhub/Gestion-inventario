@@ -2,9 +2,10 @@ import xmlrpc.client
 from typing import List, Dict, Any, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 from ..config import settings
-import logging
+from .logger import get_logger
 
-logger = logging.getLogger(__name__)
+# request_id flows automatically into logs via the JsonFormatter ContextVar.
+logger = get_logger(__name__)
 
 
 class OdooClient:
@@ -31,12 +32,12 @@ class OdooClient:
             )
             
             if not self.uid:
-                logger.warning("Autenticación con credenciales estándar")
-                
-            logger.info(f"Conectado a Odoo (UID: {self.uid})")
-            
+                logger.warning("odoo_auth_no_uid")
+
+            logger.info("odoo_connected", extra={"uid": self.uid})
+
         except Exception as e:
-            logger.error(f"Error al conectar a Odoo: {e}")
+            logger.error("odoo_connect_error", extra={"error": str(e)})
             raise
     
     def _execute(self, model: str, method: str, *args, **kwargs) -> Any:
@@ -46,10 +47,10 @@ class OdooClient:
                 model, method, args, kwargs
             )
         except xmlrpc.client.Fault as e:
-            logger.error(f"Error XML-RPC: {e.faultCode} - {e.faultString}")
+            logger.error("odoo_xmlrpc_fault", extra={"fault_code": e.faultCode, "fault_string": e.faultString})
             raise
         except Exception as e:
-            logger.error(f"Error en _execute: {e}")
+            logger.error("odoo_execute_error", extra={"error": str(e)})
             raise
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2))
@@ -112,7 +113,7 @@ class OdooClient:
             version = self.common.version()
             return True
         except Exception as e:
-            logger.error(f"Error en test_connection: {e}")
+            logger.error("odoo_test_connection_error", extra={"error": str(e)})
             return False
 
 
