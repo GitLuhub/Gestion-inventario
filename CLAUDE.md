@@ -22,6 +22,7 @@
 12. [Plan de Acción PRD — Brechas Pendientes](#12-plan-de-acción-prd--brechas-pendientes)
 13. [Auditoría CHECKLIST_PROYECTO_PROFESIONAL](#13-auditoría-checklist_proyecto_profesional)
 14. [Plan de Acción Checklist — Fases F–J](#14-plan-de-acción-checklist--fases-fj)
+15. [Estado Operacional y Tareas Pendientes](#15-estado-operacional-y-tareas-pendientes)
 
 ---
 
@@ -884,8 +885,11 @@ def _compute_totals(self):
 | Fase C | Mejoras de calidad (barcode, alertas stock, tests) | ✅ Completa |
 | Fase D | Correcciones post-auditoría (bugs, tests integración) | ✅ Completa |
 | Fase E | Deuda técnica RNF1–RNF4 (rendimiento, escalabilidad, disponibilidad, seguridad) | ✅ Completa |
-
-**Orden de ejecución recomendado Fase D:** D1 → D2 → D3 → D4
+| Fase F | Observabilidad estructurada (JSON logs + request_id) | ✅ Completa |
+| Fase G | Seguridad aplicada (rate limiting + httpOnly + auto-refresh) | ✅ Completa |
+| Fase H | Infraestructura profesional (multi-stage, coverage, staging, RTO/RPO) | ✅ Completa |
+| Fase I | Portfolio y presentación (badges, decisiones técnicas, seed demo) | ✅ Completa |
+| Fase J | Calidad avanzada (circuit breaker, load tests, audit log, cache) | ✅ Completa |
 
 ---
 
@@ -1643,3 +1647,211 @@ class ProductCreate(BaseModel):
 ---
 
 *Última actualización: 2026-03-30 (Fases F–J completamente implementadas)*
+
+---
+
+## 15. Estado Operacional y Tareas Pendientes
+
+> Esta sección documenta el estado real del proyecto tras completar todas las fases
+> de código (A–J). Las tareas pendientes son **operacionales** — no requieren cambios
+> en el código, sino acciones externas (GitHub, despliegue, capturas de pantalla).
+
+### 15.1 Estado del Proyecto
+
+| Dimensión | Estado | Detalle |
+|-----------|--------|---------|
+| Módulo Odoo | ✅ Listo | Todos los RF/RNF implementados y con tests |
+| API Gateway | ✅ Listo | JWT, rate limiting, circuit breaker, audit log, JSON logs |
+| Frontend | ✅ Listo | Dashboard, auth con httpOnly cookie, auto-refresh 401 |
+| ETL Service | ✅ Listo | Retry exponencial, JSON logs, Alembic configurado |
+| Infraestructura | ✅ Listo | Multi-stage Docker, staging, CI cobertura ≥80%, backup + restore test |
+| Observabilidad | ✅ Listo | Prometheus + Grafana + Loki + request_id en todos los logs |
+| Portfolio README | ✅ Listo | Badges, decisiones técnicas, seed demo, RTO/RPO |
+| Repositorio público | 🔲 Pendiente | Requiere `git push` a GitHub con URL real |
+
+---
+
+### 15.2 Tareas Pendientes — Inmediatas
+
+Ordenadas por impacto en portfolio. Ninguna requiere cambios de código.
+
+#### T1 — Publicar en GitHub y corregir URL del README 🔴 ALTA
+
+```bash
+# 1. Crear el repositorio en github.com/<usuario>/gestion-inventario
+# 2. Conectar y publicar:
+git remote add origin https://github.com/<usuario>/gestion-inventario.git
+git push -u origin main
+```
+
+Luego reemplazar `luisbrito` en `README.md` con el usuario real:
+```bash
+sed -i 's|luisbrito/gestion-inventario|<usuario>/gestion-inventario|g' README.md
+git add README.md && git commit -m "docs: corregir URL del repositorio en README"
+git push
+```
+
+Los badges de CI solo funcionan cuando el repo está publicado y el workflow ha corrido al menos una vez.
+
+---
+
+#### T2 — Configurar Branch Protection en GitHub 🔴 ALTA
+
+Settings → Branches → Add branch protection rule → `main`:
+- ✅ Require a pull request before merging
+- ✅ Require status checks: `Lint and Test`
+- ✅ Require branches to be up to date before merging
+- ✅ Do not allow bypassing the above settings
+
+Documentado en `.github/CONTRIBUTING.md`.
+
+---
+
+#### T3 — Screenshots reales en `docs/screenshots/` 🟠 MEDIA-ALTA
+
+El directorio `docs/screenshots/` existe con `.gitkeep`. El README referencia 3 capturas:
+`dashboard.png`, `adjustments.png`, `grafana.png`.
+
+```bash
+# Levantar el stack con datos de demo
+docker compose up -d --build
+bash scripts/seed_demo.sh
+
+# Capturar pantallas de:
+# - http://localhost:8069  (módulo Inventario Avanzado → dashboard)
+# - http://localhost:8069  (Ajustes de Inventario → formulario)
+# - http://localhost:3001  (dashboard Grafana "Odoo Performance")
+# - http://localhost:8000/docs  (Swagger UI)
+
+# Añadir al repo
+git add docs/screenshots/
+git commit -m "docs: agregar screenshots del stack en funcionamiento"
+```
+
+---
+
+### 15.3 Tareas Pendientes — Verificación Técnica
+
+#### T4 — Confirmar que tests alcanzan ≥80% de cobertura 🟠 MEDIA-ALTA
+
+El CI ahora falla si cae por debajo del umbral (`--cov-fail-under=80`). Verificar localmente
+antes del primer push para evitar que el pipeline CI quede en rojo:
+
+```bash
+# API Gateway
+cd api_gateway_service
+pip install -r requirements.txt
+pytest tests/ --cov=src --cov-report=term-missing --cov-fail-under=80
+
+# ETL Service
+cd etl_service
+pip install -r requirements.txt pytest pytest-cov
+pytest tests/ --cov=src --cov-report=term-missing --cov-fail-under=80
+
+# Frontend
+cd frontend && npm ci && npm run test:coverage
+```
+
+Si algún servicio no llega al 80%, agregar tests hasta alcanzarlo antes de hacer push.
+
+---
+
+#### T5 — Agregar `ETL_DB_URL` al Config del ETL 🟡 MEDIA
+
+Alembic está configurado y lee `ETL_DB_URL` del entorno, pero `src/config.py` no lo expone
+como atributo de clase. Agregar para que el ETL pueda conectarse a su BD de control:
+
+```python
+# etl_service/src/config.py
+ETL_DB_URL = os.getenv(
+    'ETL_DB_URL',
+    f'postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@pg_db:5432/etl_control'
+)
+```
+
+Y en `docker-compose.yml` → servicio `etl_service`:
+```yaml
+environment:
+  ETL_DB_URL: "postgresql://odoo:${POSTGRES_PASSWORD:-odoo_dev_pass}@pg_db:5432/odoo_db"
+```
+
+Ejecutar la migración inicial una vez:
+```bash
+docker exec inventory_etl_service alembic upgrade head
+```
+
+---
+
+### 15.4 Tareas Opcionales — Para Demo Pública
+
+| Tarea | Esfuerzo | Impacto |
+|-------|----------|---------|
+| Deploy en Render / Railway / Fly.io | Medio | ⭐⭐⭐ Demo clickable en CV y LinkedIn |
+| GIF/video del flujo principal (Loom / asciinema) | Bajo | ⭐⭐⭐ Diferenciador visual inmediato |
+| Audit log en routers `/products` e `/inventory` | Bajo | ⭐⭐ Completa GAP-17 al 100% |
+| Configurar GitHub Actions secrets para CD | Medio | ⭐⭐ Habilita deploy automático a staging |
+| `ETL_DB_URL` + primera migración Alembic | Bajo | ⭐⭐ Demuestra manejo profesional de esquemas |
+
+---
+
+### 15.5 Arquitectura de Archivos Nuevos — Fases F–J
+
+Archivos creados o modificados significativamente en las Fases F–J, para referencia rápida:
+
+```
+api_gateway_service/
+├── requirements.txt              # + slowapi, pybreaker
+├── Dockerfile                    # Multi-stage (builder + runtime)
+└── src/
+    ├── main.py                   # JSON logging, RequestIDMiddleware, CircuitBreaker handler
+    ├── middleware/
+    │   ├── __init__.py           # Exporta RequestIDMiddleware
+    │   └── request_id.py         # UUID por petición → ContextVar + X-Request-ID header
+    ├── routers/
+    │   └── auth.py               # Rate limiting, httpOnly cookie, audit log
+    ├── schemas/
+    │   └── schemas.py            # Field(example=...) en todos los modelos
+    └── utils/
+        ├── audit.py              # log_audit() → JSON con campo audit=true
+        ├── logger.py             # JsonFormatter + ContextVar request_id_var
+        ├── odoo_client.py        # Circuit breaker en _execute()
+        └── rate_limiter.py       # Limiter singleton compartido
+
+etl_service/
+├── requirements.txt              # + sqlalchemy, alembic
+├── Dockerfile                    # Multi-stage (builder + runtime)
+├── alembic.ini                   # Configuración Alembic
+└── alembic/
+    ├── env.py                    # Lee ETL_DB_URL, soporta online/offline
+    ├── script.py.mako            # Plantilla de migraciones
+    └── versions/
+        └── 20260330_0001_initial_etl_tracking.py  # etl_job_runs + etl_job_errors
+
+frontend/
+├── Dockerfile                    # 3 stages (deps / builder / runner con standalone)
+└── src/
+    ├── services/
+    │   ├── api.ts                # setRefreshCallback, interceptor 401→refresh→retry
+    │   └── auth.ts               # refresh() sin parámetro (cookie automática)
+    └── store/
+        └── authStore.ts          # onRehydrateStorage, sin refreshToken en estado
+
+docker/
+├── nginx/conf.d/default.conf     # Cache-Control para /_next/static/, /public/, /web/static/
+└── backup/
+    └── test_restore.sh           # Valida restauración del último backup
+
+tests/
+└── load/
+    └── locustfile.py             # Read (70%) + Write (30%), SLO hook
+
+scripts/
+└── seed_demo.sh                  # Demo reproducible vía XML-RPC a Odoo
+
+.github/
+├── workflows/ci.yml              # --cov-fail-under=80 en ETL + API + frontend
+└── CONTRIBUTING.md               # Trunk-based development, branch protection
+
+docker-compose.staging.yml        # Override staging: monitoreo activo, 1 réplica
+README.md                         # Badges, screenshots, decisiones técnicas, RTO/RPO
+```
