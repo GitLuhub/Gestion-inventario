@@ -296,7 +296,37 @@ services:
     restart: unless-stopped
 
   # ----------------------------------------------------
-  # 4.9. Node Exporter (Métricas Host)
+  # 4.9. PostgreSQL Backup (perfil: production)
+  # Ejecuta pg_dump diariamente a las 2am y retiene N días de backups
+  # ----------------------------------------------------
+  pg_backup:
+    image: postgres:15-alpine
+    container_name: inventory_pg_backup
+    hostname: pg_backup
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-odoo_db}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_pass}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - ./docker/backup/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    command: >
+      /bin/sh -c "
+        echo '0 2 * * * /backup.sh >> /var/log/backup.log 2>&1' | crontab - &&
+        crond -f -l 2
+      "
+    depends_on:
+      pg_db:
+        condition: service_healthy
+    networks:
+      - backend-network
+    restart: unless-stopped
+    profiles:
+      - production
+
+  # ----------------------------------------------------
+  # 4.10. Node Exporter (Métricas Host)
   # ----------------------------------------------------
   node_exporter:
     image: prom/node-exporter:latest
@@ -317,7 +347,7 @@ services:
       - monitoring
 
   # ----------------------------------------------------
-  # 4.10. PostgreSQL Exporter
+  # 4.11. PostgreSQL Exporter
   # ----------------------------------------------------
   postgres_exporter:
     image: quay.io/prometheuscommunity/postgres-exporter:latest
