@@ -423,3 +423,88 @@ class TestStockInventoryAdjustmentLine(TransactionCase):
             'expected_qty': 5.0,
         })
         self.assertEqual(line.difference_qty, 0.0)
+
+
+class TestAdjustmentValidateIntegration(TransactionCase):
+    """Tests de integración para action_validate — verifica creación de stock.move."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Ubicación de inventario requerida por _get_inventory_location
+        cls.inventory_location = cls.env['stock.location'].create({
+            'name': 'Test Inventory Location',
+            'usage': 'inventory',
+            'company_id': cls.env.company.id,
+        })
+        cls.env.company.property_stock_inventory_loc_id = cls.inventory_location
+
+        cls.location = cls.env['stock.location'].create({
+            'name': 'Test Warehouse Location',
+            'usage': 'internal',
+            'company_id': cls.env.company.id,
+        })
+        cls.product = cls.env['product.product'].create({
+            'name': 'Integration Test Product',
+            'type': 'product',
+        })
+
+    def _make_adjustment_with_line(self, current_qty, expected_qty):
+        adj = self.env['stock.inventory.adjustment'].create({
+            'location_ids': [(4, self.location.id)],
+        })
+        self.env['stock.inventory.adjustment.line'].create({
+            'adjustment_id': adj.id,
+            'product_id': self.product.id,
+            'location_id': self.location.id,
+            'current_qty': current_qty,
+            'expected_qty': expected_qty,
+        })
+        return adj
+
+    def test_validate_creates_stock_move_for_positive_difference(self):
+        """Validar con diferencia positiva crea un stock.move en estado done."""
+        adj = self._make_adjustment_with_line(current_qty=0.0, expected_qty=10.0)
+        adj.action_start()
+        adj.action_validate()
+        self.assertEqual(adj.state, 'done')
+        self.assertTrue(adj.move_ids, 'Debe existir al menos un stock.move tras validar')
+        self.assertTrue(
+            all(m.state == 'done' for m in adj.move_ids),
+            'Todos los stock.move deben estar en estado done',
+        )
+
+    def test_validate_creates_stock_move_for_negative_difference(self):
+        """Validar con diferencia negativa (pérdida) crea un stock.move en estado done."""
+        adj = self._make_adjustment_with_line(current_qty=10.0, expected_qty=5.0)
+        adj.action_start()
+        adj.action_validate()
+        self.assertEqual(adj.state, 'done')
+        self.assertTrue(adj.move_ids)
+
+    def test_validate_skips_lines_with_zero_difference(self):
+        """Validar líneas sin diferencia no genera stock.move."""
+        adj = self._make_adjustment_with_line(current_qty=5.0, expected_qty=5.0)
+        adj.action_start()
+        adj.action_validate()
+        self.assertEqual(adj.state, 'done')
+        self.assertFalse(adj.move_ids, 'No debe crear movimientos si la diferencia es cero')
+
+    def test_is_low_stock_computed_correctly(self):
+        """is_low_stock es True cuando qty_available < min_stock_level > 0."""
+        product_tmpl = self.env['product.template'].create({
+            'name': 'Low Stock Test',
+            'type': 'product',
+            'min_stock_level': 20.0,
+        })
+        # qty_available = 0 < min_stock_level = 20
+        self.assertTrue(product_tmpl.is_low_stock)
+
+    def test_is_low_stock_false_when_min_is_zero(self):
+        """is_low_stock es False cuando min_stock_level = 0 (sin mínimo configurado)."""
+        product_tmpl = self.env['product.template'].create({
+            'name': 'No Min Stock',
+            'type': 'product',
+            'min_stock_level': 0.0,
+        })
+        self.assertFalse(product_tmpl.is_low_stock)

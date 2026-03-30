@@ -28,7 +28,20 @@ class ProductTemplate(models.Model):
         default=0.0,
         tracking=True,
     )
-    
+    is_low_stock = fields.Boolean(
+        string='Stock Bajo Mínimo',
+        compute='_compute_is_low_stock',
+        store=True,
+    )
+
+    @api.depends('qty_available', 'min_stock_level')
+    def _compute_is_low_stock(self):
+        for product in self:
+            product.is_low_stock = (
+                product.min_stock_level > 0
+                and product.qty_available < product.min_stock_level
+            )
+
     @api.constrains('min_stock_level', 'max_stock_level')
     def _check_stock_levels(self):
         for product in self:

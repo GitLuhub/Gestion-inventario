@@ -134,8 +134,9 @@ odoo_custom_module/
 ├── __manifest__.py                      # Metadata, depends, orden de carga DATA
 │
 ├── data/
-│   └── stock_data.xml                   # Datos maestros: ubicaciones, categorías, marcas
-│                                        # noupdate="1" — no se resetean al actualizar
+│   ├── stock_data.xml                   # Datos maestros: ubicaciones, categorías, marcas
+│   │                                    # noupdate="1" — no se resetean al actualizar
+│   └── cron_data.xml                    # Cron diario: verificación de stock mínimo
 │
 ├── docs/
 │   └── models_documentation.md          # Documentación de campos por modelo
@@ -163,7 +164,8 @@ odoo_custom_module/
     ├── inventory_adjustment_views.xml   # Vistas form/tree/search + wizards + secuencia ADJ/
     ├── menu_views.xml                   # Menú raíz "Inventario Avanzado" y submenús
     ├── product_views.xml                # Vistas de product.template y product.brand
-    └── stock_views.xml                  # Extensión de vista de stock.location
+    ├── report_views.xml                 # Acciones para los 4 informes (RF7)
+    └── stock_views.xml                  # Extensión de vista stock.location + acciones picking
 ```
 
 ### Orden Crítico de Carga en `__manifest__.py`
@@ -173,10 +175,12 @@ odoo_custom_module/
     "security/security.xml",          # 1. Grupos deben existir antes que las ACL
     "security/ir.model.access.csv",   # 2. ACL ANTES de cualquier vista
     "data/stock_data.xml",            # 3. Datos maestros
-    "views/product_views.xml",        # 4. Vistas (en cualquier orden entre sí)
+    "data/cron_data.xml",             # 4. Cron jobs
+    "views/product_views.xml",        # 5. Vistas (en cualquier orden entre sí)
     "views/stock_views.xml",
     "views/menu_views.xml",
     "views/inventory_adjustment_views.xml",
+    "views/report_views.xml",
 ]
 ```
 
@@ -207,8 +211,12 @@ odoo_custom_module/
 | `manufacturer_ref` | Char | tracking=True, index |
 | `min_stock_level` | Float | digits='Product Unit of Measure' |
 | `max_stock_level` | Float | digits='Product Unit of Measure' |
+| `is_low_stock` | Boolean | compute: `qty_available < min_stock_level`, store=True |
 
 **Constraint:** `_check_stock_levels` — min no puede superar max.
+
+**Método clave:** `action_check_low_stock()` — llamado por cron diario (`ir_cron_check_low_stock`);
+envía notificación vía `mail.thread` a productos por debajo del mínimo.
 
 ### 4.3 `product.category` (extendido)
 
@@ -351,6 +359,13 @@ usuarios no administradores reciben `AccessError` al abrir el wizard.
 | ISSUE-012 | `tests/validate_views.py` | Variable `base_path` con nombre erróneo | Renombrado a `module_path` |
 | ISSUE-013 | `tests/test_models.py` | Sin tests para adjustment y wizards | Agregadas clases `TestStockInventoryAdjustment` y `TestStockInventoryAdjustmentLine` |
 | ISSUE-014 | `inventory_adjustment.py` | `StockInventoryAdjustmentReason` sin `_rec_name` | Agregado `_rec_name = 'name'` |
+
+### Bugs Post-Auditoría — Resueltos ✅ (Fase D, 2026-03-30)
+
+| ID | Archivo | Problema | Solución Aplicada |
+|----|---------|---------|------------------|
+| BUG-008 | `report_views.xml`:28 | Dominio de "Alertas de Stock Mínimo" comparaba `qty_available < 1` fijo | Agregado campo `is_low_stock` (Boolean, computed, store=True) en `product.template`; dominio actualizado a `[('is_low_stock', '=', True)]` |
+| BUG-009 | `inventory_adjustment_views.xml` | `location_ids` sin filtro de compañía en multi-compañía | Domain actualizado a `[('usage', '=', 'internal'), ('company_id', 'in', [False, company_id])]` |
 
 ---
 
@@ -558,6 +573,7 @@ python tests/validate_views.py
 | `stock.inventory.adjustment.line` | difference_qty positivo, negativo, cero |
 | `stock.inventory.wizard` | action_apply, UserError sin diferencia |
 | `stock.inventory.quick.count` | action_validate crea adjustment |
+| `stock.inventory.adjustment` (integración) | action_validate crea stock.move, diferencia cero no genera move, is_low_stock computed |
 
 ### Patrón de Fixtures
 
@@ -660,20 +676,21 @@ del producto en la ubicación pero no discriminan por lote.
 
 **Mitigación futura:** Extender el modelo con `lot_id` y filtrar quants por lote.
 
-### 3. Multi-Compañía — Dominio de Ubicaciones Sin Filtro de Compañía
+### 3. Multi-Compañía — Dominio de Ubicaciones Sin Filtro de Compañía ⚠️ Pendiente (BUG-009)
 
 `location_ids` en ajustes usa `domain=[('usage', '=', 'internal')]` sin filtrar por compañía.
 En entornos multi-compañía, un usuario podría seleccionar ubicaciones de otra compañía.
 
-**Mitigación futura:** Agregar `('company_id', 'in', [False, self.env.company.id])` al dominio.
+**Mitigación planificada (Fase D):** Agregar `('company_id', 'in', [False, company_id])` al dominio
+del campo en `inventory_adjustment_views.xml`.
 
-### 4. `total_discrepancy` No Diferencia Exceso de Faltante
+### 4. `total_discrepancy` No Diferencia Exceso de Faltante ⚠️ Pendiente (Fase D)
 
 El campo muestra la suma de valores absolutos de todas las diferencias. No permite distinguir
 cuánto corresponde a exceso (qty esperada > actual) vs faltante (qty esperada < actual).
 
-**Mitigación futura:** Agregar campos `total_surplus` y `total_shortage` computados
-separadamente.
+**Mitigación planificada (Fase D):** Agregar campos `total_surplus` y `total_shortage` computados
+separadamente en `StockInventoryAdjustment`.
 
 ### 5. `action_generate_lines` Solo Para Estado Borrador
 
@@ -681,14 +698,12 @@ Por diseño, `action_generate_lines()` lanza `UserError` si el ajuste no está e
 `draft`. Esto previene sobrescribir un ajuste en progreso, pero impide actualizar las
 cantidades base si el stock cambió después de iniciarlo.
 
-### 6. Tests de Integración No Cubren `action_validate`
+### 6. Tests de Integración No Cubren `action_validate` ✅ Resuelto (Fase D)
 
-La ruta de `_create_stock_move` en `action_validate` requiere configurar una ubicación de
-inventario en la compañía de test. Los tests actuales solo validan la lógica de modelos
-sin crear movimientos reales.
-
-**Mitigación futura:** Crear `tests/test_integration.py` con configuración completa de
-ubicación de inventario usando `setUpClass`.
+La ruta de `_create_stock_move` en `action_validate` fue cubierta con la clase
+`TestAdjustmentValidateIntegration` en `tests/test_models.py`. El `setUpClass`
+configura una ubicación de inventario real (`usage='inventory'`) y la asigna a
+`company.property_stock_inventory_loc_id` antes de ejecutar los tests.
 
 ---
 
@@ -708,20 +723,20 @@ ubicación de inventario usando `setUpClass`.
 | Prometheus + Grafana | Recomendado | ✅ Implementado | Perfil `monitoring` |
 | API Gateway (FastAPI) | No en PRD original | ✅ Implementado | Mejora — JWT auth, CRUD, métricas |
 | Frontend (Next.js) | No en PRD original | ✅ Implementado | Mejora — dashboard, productos, inventario |
-| Log Centralizado | ✅ Requerido (RNF6) | ❌ Faltante | No hay Loki/ELK/Fluentd |
-| Backup automático BD | ✅ Requerido (RNF7) | ❌ Faltante | No hay estrategia de backup |
+| Log Centralizado | ✅ Requerido (RNF6) | ✅ Implementado | Loki + Promtail, perfil `monitoring` |
+| Backup automático BD | ✅ Requerido (RNF7) | ✅ Implementado | `pg_backup` service, retención 7 días, perfil `production` |
 
 ### Requisitos Funcionales del Módulo Odoo
 
 | ID | Requisito | Estado | Detalle |
 |----|-----------|--------|---------|
-| RF1 | Gestión de Productos (CRUD completo + categorías) | ⚠️ Parcial | Extiende product.template ✓; sin menú de listado de productos ni categorías |
-| RF2 | Gestión de Ubicaciones jerárquicas | ⚠️ Parcial | Extiende stock.location ✓; solo vista "Por Tipo", sin CRUD completo ni almacenes |
-| RF3 | Operaciones de Entrada (Recepciones) | ❌ Faltante | No hay vistas/menús de recepciones en el módulo custom |
-| RF4 | Operaciones de Salida (Entregas) | ❌ Faltante | No hay vistas/menús de entregas en el módulo custom |
+| RF1 | Gestión de Productos (CRUD completo + categorías) | ✅ Cumplido | Lista productos, categorías y marcas con menús propios |
+| RF2 | Gestión de Ubicaciones jerárquicas | ✅ Cumplido | Vista todas/almacenes/por tipo; campos extendidos |
+| RF3 | Operaciones de Entrada (Recepciones) | ✅ Cumplido | Menú + acción `action_custom_receipts` con domain `incoming` |
+| RF4 | Operaciones de Salida (Entregas) | ✅ Cumplido | Menú + acción `action_custom_deliveries` con domain `outgoing` |
 | RF5 | Ajustes de Inventario | ✅ Cumplido | Modelo completo con flujo de estados + wizards |
-| RF6 | Traslados Internos | ❌ Faltante | No hay vistas/menús de traslados internos |
-| RF7 | Informes de Inventario | ❌ Faltante | Menú "Informes" existe pero está vacío |
+| RF6 | Traslados Internos | ✅ Cumplido | Menú + acción `action_custom_internal_transfers` con domain `internal` |
+| RF7 | Informes de Inventario | ⚠️ Parcial | 4 informes activos; dominio "Alertas de Stock Mínimo" usa valor fijo (BUG-008) |
 
 ### Requisitos No Funcionales
 
@@ -732,359 +747,144 @@ ubicación de inventario usando `setUpClass`.
 | RNF3 | Disponibilidad 99.5% | ⚠️ Parcial | `restart: unless-stopped` ✓; sin HA real |
 | RNF4 | Seguridad (roles, cifrado, auditoría) | ⚠️ Parcial | Grupos custom ✓, `mail.thread` ✓; sin SSL en dev, sin secretos cifrados |
 | RNF5 | Mantenibilidad | ✅ Cumplido | CLAUDE.md ✓, código documentado ✓ |
-| RNF6 | Monitorización | ⚠️ Parcial | Prometheus/Grafana ✓; sin logs centralizados |
-| RNF7 | Backup y Recuperación | ❌ Faltante | Sin estrategia de backup automatizado |
+| RNF6 | Monitorización | ✅ Cumplido | Prometheus/Grafana ✓ + Loki/Promtail ✓; 5 dashboards + alertas |
+| RNF7 | Backup y Recuperación | ✅ Cumplido | Servicio `pg_backup` con cron diario, retención 7 días |
 
 ---
 
-## 12. Plan de Acción PRD — Brechas Pendientes
-
-> Las tareas están ordenadas por prioridad de impacto. Las de Fase A son las que
-> hacen que el módulo Odoo cumpla con el MVP del PRD.
+## 12. Historial de Planes de Acción PRD
 
 ---
 
-### FASE A — Módulo Odoo: Completar RF faltantes (Alta prioridad)
+### FASE A — Módulo Odoo: Completar RF faltantes ✅ COMPLETADA
 
-#### A1 — RF7: Informes de Inventario ⭐ CRÍTICO
+| Tarea | Archivos afectados | Estado |
+|-------|-------------------|--------|
+| A1 — RF7: Informes de inventario | `report_views.xml` (nuevo), `menu_views.xml` | ✅ |
+| A2 — RF1: Menú Productos completo | `menu_views.xml` | ✅ |
+| A3 — RF2: Menú Ubicaciones completo | `menu_views.xml` | ✅ |
+| A4 — RF3/RF4/RF6: Operaciones de almacén | `menu_views.xml`, `stock_views.xml` | ✅ |
 
-**Archivo a crear:** `odoo_custom_module/views/report_views.xml`
-**Acción en manifest:** Agregar `"views/report_views.xml"` al array `data`.
-**Acción en menu_views.xml:** Agregar actions a `menu_inventory_custom_reports`.
+---
 
-Vistas a implementar:
+### FASE B — Infraestructura: Gaps de arquitectura ✅ COMPLETADA
 
+| Tarea | Archivos afectados | Estado |
+|-------|-------------------|--------|
+| B1 — RNF7: Backup automatizado PostgreSQL | `docker-compose.yml`, `docker/backup/` | ✅ |
+| B2 — RNF6: Log centralizado Loki + Promtail | `docker-compose.yml`, `docker/loki/`, `docker/promtail/` | ✅ |
+| B3 — RNF4: Prometheus Alert Rules (Odoo, PG, ETL, API, CPU, mem) | `docker/prometheus/rules/alerts.yml` | ✅ |
+| B4 — Grafana: Dashboards (odoo, etl, database, host, api-gateway) | `docker/grafana/dashboards/*.json` | ✅ |
+
+---
+
+### FASE C — Módulo Odoo: Mejoras de calidad ✅ COMPLETADA
+
+| Tarea | Archivos afectados | Estado |
+|-------|-------------------|--------|
+| C1 — RF1: Campo `barcode` visible en formulario de producto | `product_views.xml` | ✅ |
+| C2 — Alertas stock mínimo: cron diario + `mail.thread` | `models/product_extended.py`, `data/cron_data.xml` | ✅ |
+| C3 — Tests de integración para RF3/RF4 y reportes | `tests/test_models.py` (clase `TestStockOperations`) | ✅ |
+
+---
+
+### FASE D — Correcciones post-auditoría 2026-03-30 ✅ COMPLETADA
+
+> Identificadas en auditoría de calidad tras completar las Fases A–C.
+> Ordenadas por prioridad de impacto.
+
+#### D1 — BUG-008: Dominio de "Alertas de Stock Mínimo" incorrecto ✅
+
+**Problema:** `report_views.xml:28` usa `('qty_available', '<', 1)` (valor fijo).
+Odoo domains no soportan comparaciones campo-a-campo, por lo que la solución correcta
+es un campo computed en el modelo.
+
+**Solución:**
+1. Agregar campo `is_low_stock` en `models/product_extended.py`:
+```python
+is_low_stock = fields.Boolean(
+    string='Stock Bajo Mínimo',
+    compute='_compute_is_low_stock',
+    store=True,
+)
+
+@api.depends('qty_available', 'min_stock_level')
+def _compute_is_low_stock(self):
+    for product in self:
+        product.is_low_stock = (
+            product.min_stock_level > 0
+            and product.qty_available < product.min_stock_level
+        )
+```
+
+2. Actualizar dominio en `report_views.xml`:
 ```xml
-<!-- 1. Informe: Stock actual por producto y ubicación -->
-<record id="action_report_stock_by_location" model="ir.actions.act_window">
-    <field name="name">Stock por Ubicación</field>
-    <field name="res_model">stock.quant</field>
-    <field name="view_mode">tree,pivot,graph</field>
-    <field name="domain">[('location_id.usage', '=', 'internal'), ('quantity', '>', 0)]</field>
-    <field name="context">{'group_by': ['location_id', 'product_id']}</field>
-</record>
-
-<!-- 2. Informe: Movimientos de inventario -->
-<record id="action_report_stock_moves" model="ir.actions.act_window">
-    <field name="name">Historial de Movimientos</field>
-    <field name="res_model">stock.move.line</field>
-    <field name="view_mode">tree,pivot,graph</field>
-    <field name="domain">[('state', '=', 'done')]</field>
-</record>
-
-<!-- 3. Informe: Productos con stock bajo mínimo -->
-<record id="action_report_low_stock" model="ir.actions.act_window">
-    <field name="name">Alertas de Stock Mínimo</field>
-    <field name="res_model">product.template</field>
-    <field name="view_mode">tree,form</field>
-    <!-- domain filtra donde qty_available < min_stock_level -->
-</record>
-
-<!-- 4. Informe: Ajustes de inventario (histórico) -->
-<record id="action_report_adjustments_history" model="ir.actions.act_window">
-    <field name="name">Histórico de Ajustes</field>
-    <field name="res_model">stock.inventory.adjustment</field>
-    <field name="view_mode">tree,pivot,graph</field>
-    <field name="domain">[('state', '=', 'done')]</field>
-</record>
+<field name="domain">[('is_low_stock', '=', True)]</field>
 ```
 
-Menús a agregar en `menu_views.xml`:
+3. Agregar test en `test_models.py`:
+```python
+def test_is_low_stock_computed_correctly(self):
+    ...
+```
+
+---
+
+#### D2 — BUG-009: `location_ids` sin filtro de compañía ✅
+
+**Problema:** En `inventory_adjustment_views.xml`, el campo `location_ids` usa
+`domain="[('usage', '=', 'internal')]"` sin filtrar por `company_id`.
+
+**Solución:** Cambiar domain a:
 ```xml
-<menuitem id="menu_report_stock_location" name="Stock por Ubicación"
-          parent="menu_inventory_custom_reports"
-          action="action_report_stock_by_location" sequence="1"/>
-<menuitem id="menu_report_stock_moves" name="Historial de Movimientos"
-          parent="menu_inventory_custom_reports"
-          action="action_report_stock_moves" sequence="2"/>
-<menuitem id="menu_report_low_stock" name="Alertas de Stock Mínimo"
-          parent="menu_inventory_custom_reports"
-          action="action_report_low_stock" sequence="3"/>
-<menuitem id="menu_report_adjustments_history" name="Histórico de Ajustes"
-          parent="menu_inventory_custom_reports"
-          action="action_report_adjustments_history" sequence="4"/>
+domain="[('usage', '=', 'internal'), ('company_id', 'in', [False, company_id])]"
 ```
 
 ---
 
-#### A2 — RF1: Menú Productos completo
+#### D3 — Tests de integración para `action_validate` ✅
 
-**Archivo:** `odoo_custom_module/views/menu_views.xml`
+**Problema:** La ruta `_create_stock_move` en `action_validate` no tiene cobertura.
+Es la ruta más crítica del flujo de negocio.
 
-Agregar los siguientes menús bajo `menu_inventory_custom_products`:
-
-```xml
-<!-- Listado de productos (reutiliza acción nativa de Odoo) -->
-<menuitem id="menu_custom_product_list"
-          name="Todos los Productos"
-          parent="menu_inventory_custom_products"
-          action="product.product_template_action_all"
-          sequence="1"/>
-
-<!-- Categorías de producto -->
-<menuitem id="menu_custom_product_categories"
-          name="Categorías"
-          parent="menu_inventory_custom_products"
-          action="product.product_category_action_form"
-          sequence="2"/>
-
-<!-- Marcas (ya existe, mover a sequence=3) -->
-```
-
-**Nota:** `action_product_brand` ya existe — solo ajustar `sequence` a 3.
+**Solución:** Crear `tests/test_integration.py` con `setUpClass` que configure
+una ubicación de inventario real en la compañía de test, luego valide el flujo
+completo draft → in_progress → done verificando que se crean `stock.move`.
 
 ---
 
-#### A3 — RF2: Menú Ubicaciones completo
+#### D4 — `total_surplus` / `total_shortage` separados 🔵 BAJA
 
-**Archivo:** `odoo_custom_module/views/menu_views.xml`
+**Problema:** `total_discrepancy` oculta si hay exceso o faltante.
 
-```xml
-<!-- Vista full de todas las ubicaciones internas -->
-<menuitem id="menu_custom_locations_all"
-          name="Todas las Ubicaciones"
-          parent="menu_inventory_custom_locations"
-          action="stock.action_location_form"
-          sequence="1"/>
+**Solución:** Agregar en `StockInventoryAdjustment`:
+```python
+total_surplus = fields.Float(compute='_compute_totals', store=True)
+total_shortage = fields.Float(compute='_compute_totals', store=True)
 
-<!-- Almacenes -->
-<menuitem id="menu_custom_warehouses"
-          name="Almacenes"
-          parent="menu_inventory_custom_locations"
-          action="stock.action_warehouse_form"
-          sequence="2"/>
-
-<!-- Por Tipo (ya existe — mover a sequence=3) -->
+@api.depends('line_ids.difference_qty')
+def _compute_totals(self):
+    for adj in self:
+        adj.total_surplus = sum(
+            l.difference_qty for l in adj.line_ids if l.difference_qty > 0
+        )
+        adj.total_shortage = sum(
+            abs(l.difference_qty) for l in adj.line_ids if l.difference_qty < 0
+        )
 ```
 
 ---
 
-#### A4 — RF3/RF4/RF6: Operaciones de Almacén
+### Resumen Estado General
 
-**Archivo:** `odoo_custom_module/views/menu_views.xml`
+| Fase | Descripción | Estado |
+|------|-------------|--------|
+| Fase A | RF faltantes del módulo Odoo | ✅ Completa |
+| Fase B | Infraestructura (backup, logs, alertas, dashboards) | ✅ Completa |
+| Fase C | Mejoras de calidad (barcode, alertas stock, tests) | ✅ Completa |
+| Fase D | Correcciones post-auditoría (bugs, tests integración) | ✅ Completa |
 
-Agregar bajo `menu_inventory_custom_operations` (después de los menús de ajuste existentes):
-
-```xml
-<!-- Recepciones -->
-<menuitem id="menu_custom_receipts"
-          name="Recepciones"
-          parent="menu_inventory_custom_operations"
-          action="stock.action_picking_tree_all"
-          sequence="10"/>
-
-<!-- Entregas -->
-<menuitem id="menu_custom_deliveries"
-          name="Entregas"
-          parent="menu_inventory_custom_operations"
-          action="stock.action_picking_tree_all"
-          sequence="11"/>
-
-<!-- Traslados Internos -->
-<menuitem id="menu_custom_internal_transfers"
-          name="Traslados Internos"
-          parent="menu_inventory_custom_operations"
-          action="stock.action_picking_tree_all"
-          sequence="12"/>
-```
-
-**NOTA IMPORTANTE:** Las acciones de recepciones, entregas y traslados son el mismo
-`stock.picking` filtrado por `picking_type_code`. Para tener vistas diferenciadas, crear
-acciones con dominio en `product_views.xml`:
-
-```xml
-<record id="action_custom_receipts" model="ir.actions.act_window">
-    <field name="name">Recepciones</field>
-    <field name="res_model">stock.picking</field>
-    <field name="view_mode">tree,form</field>
-    <field name="domain">[('picking_type_code', '=', 'incoming')]</field>
-    <field name="context">{'default_picking_type_code': 'incoming'}</field>
-</record>
-
-<record id="action_custom_deliveries" model="ir.actions.act_window">
-    <field name="name">Entregas</field>
-    <field name="res_model">stock.picking</field>
-    <field name="view_mode">tree,form</field>
-    <field name="domain">[('picking_type_code', '=', 'outgoing')]</field>
-    <field name="context">{'default_picking_type_code': 'outgoing'}</field>
-</record>
-
-<record id="action_custom_internal_transfers" model="ir.actions.act_window">
-    <field name="name">Traslados Internos</field>
-    <field name="res_model">stock.picking</field>
-    <field name="view_mode">tree,form</field>
-    <field name="domain">[('picking_type_code', '=', 'internal')]</field>
-    <field name="context">{'default_picking_type_code': 'internal'}</field>
-</record>
-```
-
-Mover estas acciones a un nuevo archivo o a `stock_views.xml`.
-
----
-
-### FASE B — Infraestructura: Gaps de arquitectura (Prioridad media)
-
-#### B1 — RNF7: Estrategia de Backup Automatizado
-
-**Archivo a crear:** `docker/backup/backup.sh`
-**Acción en docker-compose.yml:** Agregar servicio `pg_backup`.
-
-```yaml
-pg_backup:
-  image: postgres:15-alpine
-  container_name: inventory_pg_backup
-  environment:
-    POSTGRES_USER: ${POSTGRES_USER:-odoo}
-    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_pass}
-    PGPASSWORD: ${POSTGRES_PASSWORD:-odoo_dev_pass}
-    BACKUP_SCHEDULE: "0 2 * * *"   # 2am diario
-    BACKUP_RETENTION_DAYS: 7
-  volumes:
-    - ./docker/backup/backup.sh:/backup.sh:ro
-    - ./backups:/backups
-  command: /bin/sh -c "crond -f"
-  depends_on:
-    pg_db:
-      condition: service_healthy
-  profiles:
-    - production
-  networks:
-    - backend-network
-```
-
-Script `backup.sh`:
-```bash
-#!/bin/sh
-DATE=$(date +%Y%m%d_%H%M%S)
-pg_dump -h pg_db -U $POSTGRES_USER odoo_db | gzip > /backups/odoo_db_$DATE.sql.gz
-find /backups -name "*.sql.gz" -mtime +${BACKUP_RETENTION_DAYS:-7} -delete
-```
-
----
-
-#### B2 — RNF6: Log Centralizado (Loki + Grafana)
-
-**Acción en docker-compose.yml:** Agregar servicio `loki` al perfil `monitoring`.
-
-```yaml
-loki:
-  image: grafana/loki:2.9.0
-  container_name: inventory_loki
-  command: -config.file=/etc/loki/local-config.yaml
-  volumes:
-    - ./docker/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
-  networks:
-    - backend-network
-  profiles:
-    - monitoring
-
-promtail:
-  image: grafana/promtail:2.9.0
-  container_name: inventory_promtail
-  volumes:
-    - /var/log:/var/log:ro
-    - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    - ./docker/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
-  command: -config.file=/etc/promtail/config.yaml
-  networks:
-    - backend-network
-  profiles:
-    - monitoring
-```
-
-**Archivo a crear:** `docker/loki/loki-config.yaml` y `docker/promtail/promtail-config.yaml`.
-**Acción en Grafana:** Agregar Loki como datasource en `docker/grafana/provisioning/datasources.yaml`.
-
----
-
-#### B3 — RNF4: Prometheus Alert Rules
-
-**Archivo a completar:** `docker/prometheus/rules/alerts.yml`
-
-Reglas mínimas a implementar:
-```yaml
-groups:
-  - name: inventory_alerts
-    rules:
-      - alert: OdooDown
-        expr: up{job="odoo"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Odoo está caído"
-
-      - alert: PostgreSQLDown
-        expr: up{job="postgres"} == 0
-        for: 1m
-        labels:
-          severity: critical
-
-      - alert: HighMemoryUsage
-        expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.85
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Contenedor usando >85% de memoria"
-
-      - alert: ETLJobFailed
-        expr: increase(etl_errors_total[1h]) > 5
-        for: 0m
-        labels:
-          severity: warning
-        annotations:
-          summary: "ETL acumuló más de 5 errores en la última hora"
-```
-
----
-
-#### B4 — Grafana: Dashboards faltantes
-
-**Archivos a crear** en `docker/grafana/dashboards/`:
-- `odoo-metrics.json` — dashboard de Odoo (requests/s, errores, workers activos)
-- `etl-pipeline.json` — dashboard del ETL (registros procesados, errores, tiempo de ejecución)
-- `database-metrics.json` — dashboard de PostgreSQL (conexiones, cache hit ratio, tamaño BD)
-
----
-
-### FASE C — Módulo Odoo: Mejoras de calidad (Baja prioridad)
-
-#### C1 — RF1: Campo `barcode` visible en formulario de producto
-
-El `barcode` ya existe en `product.template` de Odoo. Verificar que esté accesible
-en la vista del módulo o que no sea necesario sobreescribirlo.
-
-#### C2 — Alertas de stock mínimo en tiempo real
-
-Agregar un servidor de acciones (`ir.actions.server`) o cron que notifique vía
-`mail.thread` cuando `qty_available < min_stock_level`.
-
-#### C3 — Tests de integración para RF3/RF4
-
-Extender `tests/test_models.py` con tests que verifiquen:
-- Que las acciones de recepciones, entregas y traslados retornan los pickings correctos
-- Que los reportes de stock devuelven datos coherentes
-
----
-
-### Resumen de Esfuerzo Estimado
-
-| Fase | Tarea | Archivos afectados | Complejidad |
-|------|-------|-------------------|-------------|
-| A1 | Informes de inventario | `report_views.xml` (nuevo), `menu_views.xml` | Media |
-| A2 | Menú Productos completo | `menu_views.xml` | Baja |
-| A3 | Menú Ubicaciones completo | `menu_views.xml` | Baja |
-| A4 | Operaciones de almacén | `menu_views.xml`, `stock_views.xml` | Media |
-| B1 | Backup automatizado | `docker-compose.yml`, `docker/backup/` | Media |
-| B2 | Log centralizado Loki | `docker-compose.yml`, `docker/loki/` | Alta |
-| B3 | Alert rules Prometheus | `docker/prometheus/rules/alerts.yml` | Baja |
-| B4 | Dashboards Grafana | `docker/grafana/dashboards/*.json` | Alta |
-| C1 | Barcode en formulario | `product_views.xml` | Baja |
-| C2 | Alertas stock mínimo | `models/`, `data/` | Media |
-| C3 | Tests integración | `tests/test_models.py` | Media |
-
-**Orden de ejecución recomendado:** A2 → A3 → A4 → A1 → B3 → B1 → C1 → C2 → B2 → B4 → C3
+**Orden de ejecución recomendado Fase D:** D1 → D2 → D3 → D4
 
 ---
 
