@@ -74,17 +74,17 @@ def main():
         'views/menu_views.xml',
     ]
     
-    module_path = os.path.dirname(os.path.abspath(__file__))
-    base_path = os.path.dirname(module_path)
-    
+    tests_path = os.path.dirname(os.path.abspath(__file__))
+    module_path = os.path.dirname(tests_path)  # Navigate up from tests/ to module root
+
     print("=" * 60)
     print("VALIDACIÓN DE VISTAS - inventory_custom")
     print("=" * 60)
-    
+
     all_valid = True
-    
+
     for view_file in views_to_validate:
-        view_path = os.path.join(base_path, view_file)
+        view_path = os.path.join(module_path, view_file)
         
         if not os.path.exists(view_path):
             print(f"\n[FAIL] {view_file}: Archivo no encontrado")

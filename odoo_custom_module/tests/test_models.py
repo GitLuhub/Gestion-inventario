@@ -152,3 +152,183 @@ class TestProductCategory(TransactionCase):
         parent.parent_id = child.id
         with self.assertRaises(ValidationError):
             parent._check_hierarchy()
+
+    def test_get_subcategories_uses_child_ids(self):
+        """Test que get_subcategories retorna todas las subcategorías correctamente."""
+        root = self.Category.create({'name': 'Raíz'})
+        child1 = self.Category.create({'name': 'Hijo 1', 'parent_id': root.id})
+        child2 = self.Category.create({'name': 'Hijo 2', 'parent_id': root.id})
+        self.Category.create({'name': 'Nieto 1', 'parent_id': child1.id})
+
+        subcats = root.get_subcategories()
+        self.assertIn(child1, subcats)
+        self.assertIn(child2, subcats)
+
+    def test_get_full_path(self):
+        """Test que get_full_path retorna la ruta completa."""
+        root = self.Category.create({'name': 'Raíz'})
+        child = self.Category.create({'name': 'Hijo', 'parent_id': root.id})
+        self.assertEqual(child.get_full_path(), 'Raíz / Hijo')
+
+
+class TestStockInventoryAdjustment(TransactionCase):
+    """Tests para stock.inventory.adjustment"""
+
+    def setUp(self):
+        super().setUp()
+        self.Adjustment = self.env['stock.inventory.adjustment']
+        self.AdjustmentLine = self.env['stock.inventory.adjustment.line']
+        self.location = self.env['stock.location'].create({
+            'name': 'Test Location',
+            'usage': 'internal',
+        })
+        self.product = self.env['product.product'].create({
+            'name': 'Test Product',
+            'type': 'product',
+        })
+
+    def test_adjustment_create_sequence(self):
+        """Test que se asigna secuencia automáticamente."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        self.assertNotEqual(adj.name, 'New')
+        self.assertTrue(adj.name.startswith('ADJ/'))
+
+    def test_adjustment_default_state_is_draft(self):
+        """Test que el estado inicial es borrador."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        self.assertEqual(adj.state, 'draft')
+
+    def test_adjustment_state_flow_to_in_progress(self):
+        """Test transición de estados draft → in_progress."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        adj.action_start()
+        self.assertEqual(adj.state, 'in_progress')
+
+    def test_adjustment_cancel(self):
+        """Test cancelación de ajuste."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        adj.action_cancel()
+        self.assertEqual(adj.state, 'cancel')
+
+    def test_total_discrepancy_uses_absolute_values(self):
+        """Test que total_discrepancy suma valores absolutos (no con signo)."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        product2 = self.env['product.product'].create({
+            'name': 'Test Product 2',
+            'type': 'product',
+        })
+        location2 = self.env['stock.location'].create({
+            'name': 'Test Location 2',
+            'usage': 'internal',
+        })
+        # Línea con diferencia -3 (pérdida)
+        self.AdjustmentLine.create({
+            'adjustment_id': adj.id,
+            'product_id': self.product.id,
+            'location_id': self.location.id,
+            'current_qty': 10.0,
+            'expected_qty': 7.0,
+        })
+        # Línea con diferencia +3 (exceso)
+        self.AdjustmentLine.create({
+            'adjustment_id': adj.id,
+            'product_id': product2.id,
+            'location_id': location2.id,
+            'current_qty': 5.0,
+            'expected_qty': 8.0,
+        })
+        # Con abs(): 3 + 3 = 6. Sin abs(): -3 + 3 = 0
+        self.assertEqual(adj.total_discrepancy, 6.0)
+
+    def test_generate_lines_no_duplicates_on_repeated_calls(self):
+        """Test que generate_lines limpia líneas previas y no genera duplicados."""
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        adj.action_generate_lines()
+        first_count = len(adj.line_ids)
+        adj.action_generate_lines()
+        second_count = len(adj.line_ids)
+        self.assertEqual(first_count, second_count,
+                         'generate_lines debe limpiar líneas previas antes de regenerar')
+
+    def test_generate_lines_without_location_raises_error(self):
+        """Test que generar líneas sin ubicación lanza UserError."""
+        from odoo.exceptions import UserError
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        adj.location_ids = False
+        with self.assertRaises(UserError):
+            adj.action_generate_lines()
+
+    def test_validate_without_lines_raises_error(self):
+        """Test que validar sin líneas lanza UserError."""
+        from odoo.exceptions import UserError
+        adj = self.Adjustment.create({
+            'location_ids': [(4, self.location.id)],
+        })
+        adj.action_start()
+        with self.assertRaises(UserError):
+            adj.action_validate()
+
+
+class TestStockInventoryAdjustmentLine(TransactionCase):
+    """Tests para stock.inventory.adjustment.line"""
+
+    def setUp(self):
+        super().setUp()
+        self.location = self.env['stock.location'].create({
+            'name': 'Test Location',
+            'usage': 'internal',
+        })
+        self.product = self.env['product.product'].create({
+            'name': 'Test Product',
+            'type': 'product',
+        })
+        self.adj = self.env['stock.inventory.adjustment'].create({
+            'location_ids': [(4, self.location.id)],
+        })
+
+    def test_difference_qty_positive(self):
+        """Test que difference_qty = expected - current cuando expected > current."""
+        line = self.env['stock.inventory.adjustment.line'].create({
+            'adjustment_id': self.adj.id,
+            'product_id': self.product.id,
+            'location_id': self.location.id,
+            'current_qty': 10.0,
+            'expected_qty': 15.0,
+        })
+        self.assertEqual(line.difference_qty, 5.0)
+
+    def test_difference_qty_negative(self):
+        """Test diferencia negativa cuando expected < current."""
+        line = self.env['stock.inventory.adjustment.line'].create({
+            'adjustment_id': self.adj.id,
+            'product_id': self.product.id,
+            'location_id': self.location.id,
+            'current_qty': 20.0,
+            'expected_qty': 10.0,
+        })
+        self.assertEqual(line.difference_qty, -10.0)
+
+    def test_difference_qty_zero(self):
+        """Test diferencia cero cuando expected == current."""
+        line = self.env['stock.inventory.adjustment.line'].create({
+            'adjustment_id': self.adj.id,
+            'product_id': self.product.id,
+            'location_id': self.location.id,
+            'current_qty': 5.0,
+            'expected_qty': 5.0,
+        })
+        self.assertEqual(line.difference_qty, 0.0)
