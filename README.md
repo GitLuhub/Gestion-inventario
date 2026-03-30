@@ -1,312 +1,332 @@
 # Sistema de Gestión de Inventario Avanzado
 
-Sistema de gestión de inventario construido con Odoo 16.0 LTS, ETL en Python, API Gateway FastAPI y Frontend Next.js.
+<!-- I1: Badges -->
+[![CI Pipeline](https://github.com/luisbrito/gestion-inventario/actions/workflows/ci.yml/badge.svg)](https://github.com/luisbrito/gestion-inventario/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)](https://github.com/luisbrito/gestion-inventario/actions)
+[![Odoo](https://img.shields.io/badge/Odoo-16.0%20LTS-714B67?logo=odoo)](https://www.odoo.com)
+[![License: LGPL-3.0](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](docker-compose.yml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi)](api_gateway_service/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](frontend/)
+
+Sistema de gestión de inventario empresarial construido sobre Odoo 16.0 LTS, con pipeline ETL, API Gateway JWT y dashboard en Next.js. Diseñado para cumplir estándares de producción: observabilidad estructurada, seguridad por capas y CI/CD automatizado.
+
+---
+
+## Capturas de Pantalla
+
+<!-- I2: Screenshots section -->
+> Las capturas de pantalla están disponibles en [`docs/screenshots/`](docs/screenshots/).
+
+| Dashboard de Inventario | Ajustes de Stock | Grafana Metrics |
+|-------------------------|------------------|-----------------|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Ajustes](docs/screenshots/adjustments.png) | ![Grafana](docs/screenshots/grafana.png) |
+
+---
 
 ## Arquitectura
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Nginx     │────▶│   Frontend   │────▶│  API Gateway │
-│  (Reverse   │     │  (Next.js)   │     │  (FastAPI)   │
-│   Proxy)    │     └──────────────┘     └──────┬───────┘
-└─────────────┘                                 │
-                                                 ▼
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Prometheus  │◀────│   Odoo       │◀────│    ETL       │
-│   +         │     │   16.0       │     │   Service    │
-│  Grafana    │     │  + Inventory │     │  (Python)    │
-└─────────────┘     └──────┬───────┘     └──────────────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │  PostgreSQL   │
-                    │     15       │
-                    └──────────────┘
+┌──────────────────────────────────────────────────────┐
+│                      Cliente                         │
+└────────────────────────┬─────────────────────────────┘
+                         │ HTTPS
+                         ▼
+               ┌─────────────────┐
+               │   Nginx (TLS)   │  Reverse proxy + terminación SSL
+               └────────┬────────┘
+              ┌─────────┴─────────┐
+              ▼                   ▼
+    ┌──────────────┐    ┌──────────────────┐
+    │  Frontend    │    │   API Gateway    │  JWT, rate limiting, circuit breaker
+    │  (Next.js)   │    │   (FastAPI)      │
+    └──────────────┘    └────────┬─────────┘
+                                 │
+                     ┌───────────┴────────────┐
+                     ▼                        ▼
+            ┌──────────────┐        ┌──────────────────┐
+            │  Odoo 16.0   │        │   ETL Service    │  CSV / API / BD → Odoo
+            │ + inventory  │        │   (Python)       │
+            │   _custom    │        └──────────────────┘
+            └──────┬───────┘
+                   │
+                   ▼
+          ┌──────────────────┐
+          │  PostgreSQL 15   │  Backup automático diario
+          └──────────────────┘
+
+Observabilidad: Prometheus → Grafana / Loki ← Promtail
 ```
 
-## Servicios
+### Stack Tecnológico
 
-| Servicio | Descripción | Puerto |
-|----------|-------------|--------|
-| Nginx | Reverse Proxy / Load Balancer | 80, 443 |
-| Odoo | ERP con módulo de inventario | 8069 |
-| PostgreSQL | Base de datos principal | 5432 |
-| ETL Service | Pipeline de sincronización | - |
-| API Gateway | API REST con JWT | 8000 |
-| Frontend | Aplicación web Next.js | 3000 |
-| Prometheus | Métricas | 9090 |
-| Grafana | Dashboards | 3001 |
+| Capa | Tecnología | Versión |
+|------|-----------|---------|
+| ERP | Odoo + módulo `inventory_custom` | 16.0 LTS |
+| Base de datos | PostgreSQL | 15 |
+| API Backend | FastAPI + Pydantic v2 | 0.100+ |
+| Frontend | Next.js 14 App Router + Tailwind | 14 |
+| ETL | Python + tenacity + schedule | 3.11 |
+| Proxy | Nginx (TLS 1.2/1.3, HSTS) | stable-alpine |
+| Métricas | Prometheus + Grafana | latest |
+| Logs | Loki + Promtail | 2.9.0 |
+| Orquestación | Docker Compose | 2.20+ |
+| CI/CD | GitHub Actions | — |
 
-## Requisitos
+---
+
+## Decisiones Técnicas
+
+<!-- I3: Sección de decisiones técnicas -->
+
+### 1. Módulo Odoo personalizado en lugar de una BD independiente
+
+**Decisión:** Extender `stock` de Odoo en lugar de crear una BD propia para el inventario.
+
+**Razón:** Odoo ya incluye un motor de stock probado (movimientos, trazabilidad, multi-almacén). Reimplementarlo desde cero habría creado deuda sin valor. El módulo `inventory_custom` añade solo lo que Odoo no trae: clasificación avanzada de ubicaciones, ajustes con flujo de aprobación y alertas de stock mínimo.
+
+**Trade-off:** Acoplamiento a la versión de Odoo (16.0). Mitigado usando `_inherit` en lugar de `_name`, de modo que los upgrades de Odoo solo requieren revisar los campos extendidos.
+
+---
+
+### 2. API Gateway FastAPI frente a exponer Odoo directamente
+
+**Decisión:** Un microservicio FastAPI como proxy entre el frontend y Odoo.
+
+**Razón:**
+- Odoo XML-RPC no soporta JWT nativo ni rate limiting.
+- Desacopla el contrato de API del ciclo de versiones de Odoo.
+- Permite añadir middlewares (observabilidad, CORS, circuit breaker) sin tocar el ERP.
+
+**Trade-off:** Un hop adicional en latencia (~5 ms). Aceptable para un dashboard interno.
+
+---
+
+### 3. Refresh token en cookie httpOnly (no en localStorage)
+
+**Decisión:** El refresh token (7 días) viaja solo en `Set-Cookie: httpOnly; Secure; SameSite=Strict`. El access token (30 min) se guarda en memoria / cookie JS.
+
+**Razón:** Un token en `localStorage` es accesible desde cualquier script, lo que lo hace vulnerable a XSS. Con `httpOnly` el token es opaco al JavaScript: el navegador lo envía automáticamente sin que ningún código lo pueda leer.
+
+**Trade-off:** Requiere `credentials: 'include'` en el fetch del frontend y configuración CORS con `allow_credentials=True`.
+
+---
+
+### 4. ETL como cron dentro de Docker, no como Celery
+
+**Decisión:** El ETL corre con `schedule` + cron de Alpine cada 15 minutos.
+
+**Razón:** El volumen de datos no justifica la complejidad operacional de Celery (Redis broker, workers, flower). Un cron simple es predecible, visible en logs y fácil de depurar.
+
+**Trade-off:** Sin reintentos distribuidos. Mitigado con `tenacity` (retry exponencial) dentro del propio proceso ETL.
+
+---
+
+### 5. Logging JSON estructurado desde el primer commit
+
+**Decisión:** Todos los servicios emiten logs como líneas JSON con `timestamp`, `level`, `request_id`, y campos de contexto.
+
+**Razón:** Los logs de texto libre son imposibles de consultar en Loki/Grafana. Con JSON, cualquier campo es un label filtrable sin parsers adicionales.
+
+**Trade-off:** Ligero overhead de serialización (<0.1 ms por log). Irrelevante frente a la ganancia en observabilidad.
+
+---
+
+## Módulo Odoo: `inventory_custom`
+
+El módulo extiende Odoo 16 con:
+
+| Funcionalidad | Modelo |
+|---------------|--------|
+| Marcas de productos | `product.brand` |
+| Niveles de stock mínimo/máximo + alertas | `product.template` (extendido) |
+| Ubicaciones avanzadas (tipo, capacidad, clase) | `stock.location` (extendido) |
+| Ajustes de inventario con aprobación | `stock.inventory.adjustment` |
+| Wizard de ajuste rápido | `stock.inventory.wizard` |
+| Informes: stock, movimientos, alertas, histórico | vistas/acciones reutilizando modelos Odoo |
+
+Ver [`CLAUDE.md`](CLAUDE.md) para la documentación técnica completa del módulo.
+
+---
+
+## Inicio Rápido
+
+### Requisitos
 
 - Docker Engine 24.0+
 - Docker Compose 2.20+
-- 8GB RAM mínimo recomendado
-- 50GB espacio en disco
+- 8 GB RAM mínimo (16 GB recomendado para producción)
 
-## Instalación Rápida
-
-### 1. Clonar el repositorio
+### 1. Clonar y configurar
 
 ```bash
-git clone <repo-url>
-cd Gestion-inventario
+git clone https://github.com/luisbrito/gestion-inventario.git
+cd gestion-inventario
+cp .env.example .env
 ```
 
-### 2. Configurar secretos
+### 2. Generar secretos
 
 ```bash
-# Ejecutar script de configuración
 bash secrets/setup_secrets.sh
-
-# O manualmente:
-mkdir -p secrets/certs
-openssl rand -base64 32 > secrets/db_password.txt
-openssl rand -base64 32 > secrets/odoo_master_password.txt
-openssl rand -hex 64 > secrets/jwt_secret_key.txt
-chmod 600 secrets/*.txt
 ```
 
 ### 3. Iniciar servicios
 
 ```bash
-# Construir e iniciar todos los servicios
+# Stack base (Odoo + PostgreSQL + ETL + API + Frontend + Nginx)
 docker compose up -d --build
 
-# Ver logs
-docker compose logs -f
+# Con observabilidad (Prometheus + Grafana + Loki + Promtail)
+docker compose --profile monitoring up -d --build
+
+# Con backup automático (producción)
+docker compose --profile production up -d --build
 ```
 
-### 4. Acceder a los servicios
-
-| Servicio | URL |
-|----------|-----|
-| Odoo | http://localhost:8069 |
-| Frontend | http://localhost:3000 |
-| API Gateway | http://localhost:8000 |
-| Swagger UI | http://localhost:8000/docs |
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
-
-## Desarrollo
-
-### Estructura del proyecto
-
-```
-.
-├── docker/               # Configuración Docker
-│   ├── nginx/           # Configuración Nginx
-│   ├── odoo/            # Dockerfile Odoo
-│   ├── prometheus/      # Configuración Prometheus
-│   └── grafana/         # Dashboards de Grafana
-├── odoo_custom_module/  # Módulo personalizado Odoo
-├── etl_service/         # Servicio ETL Python
-├── api_gateway_service/ # API Gateway FastAPI
-├── frontend/            # Aplicación Next.js
-├── secrets/             # Secretos (no commitear)
-├── docker compose.yml   # Orquestación de servicios
-└── .env.example        # Variables de entorno ejemplo
-```
-
-### Comandos útiles
+### 4. Cargar datos de demo
 
 ```bash
-# Reconstruir un servicio específico
+# Crea productos, ubicaciones y ajustes de ejemplo para demostración
+bash scripts/seed_demo.sh
+```
+
+### 5. Acceder
+
+| Servicio | URL | Credenciales |
+|----------|-----|--------------|
+| Frontend | http://localhost:3000 | admin / admin |
+| Odoo | http://localhost:8069 | admin / admin |
+| API Swagger | http://localhost:8000/docs | — |
+| Grafana | http://localhost:3001 | admin / ver `.env` |
+| Prometheus | http://localhost:9090 | — |
+
+---
+
+## Comandos de Desarrollo
+
+```bash
+# Reconstruir un servicio
 docker compose up -d --build odoo_app
 
-# Ver logs de un servicio
-docker compose logs -f odoo_app
+# Ver logs en tiempo real
+docker compose logs -f api_gateway
 
-# Reiniciar un servicio
-docker compose restart etl_service
+# Ejecutar tests del módulo Odoo
+docker exec inventory_odoo_app odoo-bin \
+  -d odoo_db --test-enable --stop-after-init \
+  --test-tags /inventory_custom
+
+# Tests de rendimiento
+docker exec inventory_odoo_app odoo-bin \
+  -d odoo_db \
+  --test-tags /inventory_custom:TestCRUDPerformance \
+  --stop-after-init
+
+# Tests API Gateway
+cd api_gateway_service && pytest tests/ -v --cov=src --cov-report=term
+
+# Tests Frontend
+cd frontend && npm test -- --coverage
 
 # Acceder a PostgreSQL
 docker exec -it inventory_pg_db psql -U odoo -d odoo_db
 
-# Acceder al shell de Odoo
-docker exec -it inventory_odoo_app bash
-
-# Ver uso de recursos
-docker stats
+# Linting XML del módulo (sin Odoo)
+cd odoo_custom_module && python tests/validate_views.py
 ```
 
-## ETL - Sincronización de Datos
+---
 
-El servicio ETL sincroniza datos de fuentes externas hacia Odoo:
-
-### Fuentes de datos soportadas
-
-- Archivos CSV/Excel
-- APIs REST externas
-- Bases de datos SQL
-
-### Configuración
+## API Gateway — Endpoints Principales
 
 ```bash
-# Editar configuración del ETL
-vi etl_service/src/config.py
-
-# Los datos CSV van en:
-etl_service/data/products.csv
-etl_service/data/inventory.csv
-```
-
-### Ejecución manual
-
-```bash
-# Ejecutar ETL manualmente
-docker exec -it inventory_etl_service python /app/src/main.py
-```
-
-## API Gateway
-
-### Autenticación
-
-```bash
-# Obtener token JWT
+# Login (devuelve access token; refresh token en cookie httpOnly)
 curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=admin&password=admin" -c cookies.txt
+
+# Listar productos
+curl http://localhost:8000/api/v1/products \
+  -H "Authorization: Bearer <access_token>"
+
+# Inventario actual
+curl http://localhost:8000/api/v1/inventory \
+  -H "Authorization: Bearer <access_token>"
+
+# Ajustar stock
+curl -X POST http://localhost:8000/api/v1/inventory/adjust \
+  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin"}'
+  -d '{"product_id": 1, "location_id": 5, "new_qty": 100}'
+
+# Refrescar token (usa cookie httpOnly automáticamente)
+curl -X POST http://localhost:8000/api/v1/auth/refresh -b cookies.txt
 ```
 
-### Endpoints principales
+Documentación interactiva completa en http://localhost:8000/docs.
 
-- `POST /api/v1/auth/login` - Iniciar sesión
-- `GET /api/v1/products` - Listar productos
-- `POST /api/v1/products` - Crear producto
-- `GET /api/v1/inventory` - Ver inventario
-- `POST /api/v1/inventory/adjust` - Ajustar stock
+---
 
 ## Monitoreo
 
-### Prometheus
+### Métricas Prometheus
 
-Accede a http://localhost:9090 para ver métricas.
+El API Gateway expone `/metrics` con:
+- `api_gateway_requests_total` — contador por método, endpoint y status
+- `api_gateway_request_duration_seconds` — histograma de latencia
 
 ### Grafana
 
-Accede a http://localhost:3001 (admin/admin).
+Dashboards preconfigurados en `docker/grafana/dashboards/`:
+- **Infrastructure Overview** — CPU, memoria, red por contenedor
+- **Odoo Performance** — requests/s, workers activos, errores
+- **ETL Pipeline** — registros procesados, errores, duración
+- **PostgreSQL Stats** — conexiones, cache hit ratio, tamaño de BD
 
-Dashboards disponibles:
-- Infrastructure Overview
-- Odoo Performance
-- ETL Status
-- PostgreSQL Stats
+### Logs
 
-## Testing
+Con el perfil `monitoring`, Promtail recoge los logs de todos los contenedores y los envía a Loki. Consultables desde Grafana → Explore → Loki.
 
-### Unit Tests
-
-```bash
-# ETL Service tests
-cd etl_service
-pip install -r requirements.txt
-pytest tests/ -v
-
-# API Gateway tests
-cd api_gateway_service
-pip install -r requirements.txt
-pytest tests/ -v
-
-# Frontend tests
-cd frontend
-npm install
-npm test
-```
-
-### E2E Tests
-
-```bash
-# Run Playwright E2E tests (when configured)
-npm run test:e2e
-```
+---
 
 ## CI/CD
 
-### GitHub Actions
+### CI Pipeline (`.github/workflows/ci.yml`)
 
-El proyecto incluye pipelines de CI/CD automatizados:
+Ejecuta en cada push y PR:
+1. Linting (flake8, mypy, ESLint)
+2. Tests unitarios con cobertura ≥ 80%
+3. Build de imágenes Docker
 
-#### CI Pipeline (`.github/workflows/ci.yml`)
-- Linting y type checking
-- Tests unitarios para ETL, API y Frontend
-- Build de imágenes Docker
-- Se ejecuta en cada push y PR
+### CD Pipeline (`.github/workflows/cd.yml`)
 
-#### CD Pipeline (`.github/workflows/cd.yml`)
-- Deploy automático a staging (rama develop)
-- Deploy a producción (rama main)
-- Requiere configurar secrets en GitHub:
-  - `STAGING_HOST`, `STAGING_USER`, `STAGING_SSH_KEY`
-  - `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_SSH_KEY`
+- `develop` → deploy automático a staging
+- `main` → deploy a producción vía SSH
 
-### Configurar Secrets para Deploy
-
-```bash
-# En GitHub > Settings > Secrets > Actions:
-STAGING_HOST=staging.example.com
-STAGING_USER=deploy
-STAGING_SSH_KEY=<private_key>
-PRODUCTION_HOST=prod.example.com
-PRODUCTION_USER=deploy
-PRODUCTION_SSH_KEY=<private_key>
+Secrets necesarios en GitHub → Settings → Actions:
+```
+STAGING_HOST, STAGING_USER, STAGING_SSH_KEY
+PRODUCTION_HOST, PRODUCTION_USER, PRODUCTION_SSH_KEY
+GRAFANA_ADMIN_PASSWORD
 ```
 
-## Producción
+---
 
-### Requisitos del Servidor
+## Backup y Recuperación
 
-- Ubuntu 22.04 LTS (recomendado)
-- 16GB RAM mínimo
-- 100GB SSD
-- Docker Engine 24.0+
-- Docker Compose 2.20+
-
-### Pasos de Despliegue
+El servicio `pg_backup` (perfil `production`) ejecuta `pg_dump` diariamente a las 2:00 AM y retiene 7 días de backups en `./backups/`.
 
 ```bash
-# 1. Clonar en el servidor
-git clone <repo-url> /opt/inventory
-cd /opt/inventory
-
-# 2. Configurar producción
-cp .env.example .env
-# Editar .env con valores de producción
-
-# 3. Crear secretos
-mkdir -p secrets
-openssl rand -base64 32 > secrets/db_password.txt
-openssl rand -base64 64 > secrets/odoo_master_password.txt
-openssl rand -hex 64 > secrets/jwt_secret_key.txt
-chmod 600 secrets/*.txt
-
-# 4. Deploy
- docker compose -f docker compose.yml -f docker compose.dev.yml up
-
-# 5. Verificar
-docker compose ps
-docker compose logs -f
+# Restaurar un backup
+gunzip -c backups/odoo_db_20260330_020000.sql.gz | \
+  docker exec -i inventory_pg_db psql -U odoo odoo_db
 ```
 
-### Backup
+**RTO objetivo:** < 1 hora | **RPO objetivo:** < 24 horas
 
-```bash
-# Backup de PostgreSQL
-docker exec inventory_pg_db pg_dump -U odoo odoo_db > backup_$(date +%Y%m%d).sql
-
-# Backup de volúmenes
-docker run --rm -v inventory_pg_data:/data -v $(pwd):/backup alpine tar czf /backup/pg_backup.tar.gz -C /data .
-```
-
-### Actualización
-
-```bash
-cd /opt/inventory
-git pull
-docker compose pull
-docker compose up -d --build
-```
+---
 
 ## Licencia
 
-MIT License
+Este proyecto se distribuye bajo la licencia [LGPL-3.0](LICENSE) para el módulo Odoo (herencia de la licencia de Odoo), y MIT para los demás componentes.

@@ -142,12 +142,13 @@ Archivos proyecto Gestion-inventario
 *.tmp
 
 # ===================================================================
-# Scripts de utilidad personal
+# Scripts de utilidad personal (solo los que empiezan con _)
+# Los scripts de proyecto (seed_demo.sh, etc.) SÍ se commitean.
 # ===================================================================
-scripts/*.sh
-scripts/*.py
-scripts/*.bat
-scripts/*.ps1
+scripts/_*.sh
+scripts/_*.py
+scripts/_*.bat
+scripts/_*.ps1
 
 # ===================================================================
 # Node/npm
