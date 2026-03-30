@@ -1,28 +1,19 @@
 {
     "name": "inventory_custom",
-    "version": "1.0.0",
+    "version": "16.0.1.0.0",
     "category": "Inventory",
     "summary": "Módulo personalizado de gestión de inventario avanzado",
     "description": """
-        Módulo de Gestión de Inventario Avanzado para Odoo 16.0
-        
-        Funcionalidades:
-        - Gestión de productos y variantes
-        - Gestión de ubicaciones de almacén
-        - Recepciones de mercancía
-        - Entregas de mercancía
-        - Ajustes de inventario
-        - Traslados internos
-        - Informes de inventario
-        
-        Requisitos cubiertos:
-        - RF1: Gestión de Productos
-        - RF2: Gestión de Ubicaciones
-        - RF3: Recepción de Mercancía
-        - RF4: Entregas de Mercancía
-        - RF5: Ajustes de Inventario
-        - RF6: Traslados Internos
-        - RF7: Informes de Inventario
+Advanced Inventory Management Module for Odoo 16.
+
+Features:
+- Product brands with product count
+- Extended stock locations with capacity tracking and usage classification
+- Extended product categories with hierarchy utilities
+- Custom inventory adjustment workflow (draft → in_progress → done)
+- Quick adjustment wizard for single-product corrections
+- Quick count wizard for full location inventory
+- Custom security groups (Manager, Operator, Viewer)
     """,
     "author": "Luis Brito",
     "website": "https://inventory.local",
@@ -31,6 +22,7 @@
         "base",
         "product",
         "stock",
+        "mail",
     ],
     "data": [
         "security/security.xml",
@@ -39,9 +31,9 @@
         "views/product_views.xml",
         "views/stock_views.xml",
         "views/menu_views.xml",
+        "views/inventory_adjustment_views.xml",
     ],
-    "demo": [
-    ],
+    "demo": [],
     "installable": True,
     "application": True,
     "auto_install": False,
