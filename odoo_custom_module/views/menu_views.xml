@@ -4,48 +4,76 @@
         <menuitem id="menu_inventory_custom_root"
                   name="Inventario Avanzado"
                   sequence="10"
-                  groups="stock.group_stock_manager"/>
+                  groups="inventory_custom.group_inventory_viewer"/>
 
         <menuitem id="menu_inventory_custom_products"
                   name="Productos"
                   parent="menu_inventory_custom_root"
                   sequence="1"
-                  groups="stock.group_stock_user"/>
+                  groups="inventory_custom.group_inventory_viewer"/>
 
         <menuitem id="menu_inventory_custom_locations"
                   name="Ubicaciones"
                   parent="menu_inventory_custom_root"
                   sequence="2"
-                  groups="stock.group_stock_user"/>
+                  groups="inventory_custom.group_inventory_viewer"/>
 
         <menuitem id="menu_inventory_custom_operations"
                   name="Operaciones"
                   parent="menu_inventory_custom_root"
                   sequence="3"
-                  groups="stock.group_stock_user"/>
+                  groups="inventory_custom.group_inventory_operator"/>
 
         <menuitem id="menu_inventory_custom_reports"
                   name="Informes"
                   parent="menu_inventory_custom_root"
                   sequence="4"
-                  groups="stock.group_stock_manager"/>
+                  groups="inventory_custom.group_inventory_viewer"/>
 
         <menuitem id="menu_inventory_custom_configuration"
                   name="Configuración"
                   parent="menu_inventory_custom_root"
                   sequence="99"
-                  groups="stock.group_stock_manager"/>
+                  groups="inventory_custom.group_inventory_manager"/>
 
+        <!-- Productos -->
+        <menuitem id="menu_product_brand"
+                  name="Marcas"
+                  parent="menu_inventory_custom_products"
+                  action="action_product_brand"
+                  sequence="1"/>
+
+        <!-- Ubicaciones -->
         <menuitem id="menu_stock_location_type"
                   name="Por Tipo"
                   parent="menu_inventory_custom_locations"
                   action="action_stock_location_type"
                   sequence="1"/>
 
-        <menuitem id="menu_product_brand"
-                  name="Marcas"
-                  parent="menu_inventory_custom_products"
-                  action="action_product_brand"
-                  sequence="5"/>
+        <!-- Operaciones -->
+        <menuitem id="menu_inventory_custom_adjustments_list"
+                  name="Ajustes de Inventario"
+                  parent="menu_inventory_custom_operations"
+                  action="action_stock_inventory_adjustment"
+                  sequence="1"/>
+
+        <menuitem id="menu_inventory_custom_quick_adjust"
+                  name="Ajuste Rápido"
+                  parent="menu_inventory_custom_operations"
+                  action="action_stock_inventory_wizard"
+                  sequence="2"/>
+
+        <menuitem id="menu_inventory_custom_quick_count"
+                  name="Conteo Rápido"
+                  parent="menu_inventory_custom_operations"
+                  action="action_stock_inventory_quick_count"
+                  sequence="3"/>
+
+        <!-- Configuración -->
+        <menuitem id="menu_inventory_custom_reasons"
+                  name="Razones de Ajuste"
+                  parent="menu_inventory_custom_configuration"
+                  action="action_stock_inventory_adjustment_reason"
+                  sequence="1"/>
     </data>
 </odoo>
