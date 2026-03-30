@@ -28,6 +28,7 @@ Features:
         "security/security.xml",
         "security/ir.model.access.csv",
         "data/stock_data.xml",
+        "data/cron_data.xml",
         "views/product_views.xml",
         "views/stock_views.xml",
         "views/menu_views.xml",

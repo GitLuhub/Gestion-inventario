@@ -283,6 +283,97 @@ class TestStockInventoryAdjustment(TransactionCase):
             adj.action_validate()
 
 
+class TestStockOperations(TransactionCase):
+    """Tests de integración para RF3 (Recepciones), RF4 (Entregas) y RF6 (Traslados)."""
+
+    def setUp(self):
+        super().setUp()
+        self.Action = self.env['ir.actions.act_window']
+
+    def _get_action(self, xml_id):
+        """Devuelve la acción por XML ID completo."""
+        module, name = xml_id.split('.')
+        return self.env.ref(xml_id)
+
+    def test_action_receipts_domain(self):
+        """La acción de recepciones filtra solo pickings de tipo incoming."""
+        action = self._get_action('inventory_custom.action_custom_receipts')
+        self.assertIn("'incoming'", action.domain)
+
+    def test_action_deliveries_domain(self):
+        """La acción de entregas filtra solo pickings de tipo outgoing."""
+        action = self._get_action('inventory_custom.action_custom_deliveries')
+        self.assertIn("'outgoing'", action.domain)
+
+    def test_action_internal_transfers_domain(self):
+        """La acción de traslados filtra solo pickings de tipo internal."""
+        action = self._get_action('inventory_custom.action_custom_internal_transfers')
+        self.assertIn("'internal'", action.domain)
+
+    def test_actions_target_stock_picking(self):
+        """Todas las acciones de operaciones apuntan al modelo stock.picking."""
+        for xml_id in [
+            'inventory_custom.action_custom_receipts',
+            'inventory_custom.action_custom_deliveries',
+            'inventory_custom.action_custom_internal_transfers',
+        ]:
+            action = self._get_action(xml_id)
+            self.assertEqual(action.res_model, 'stock.picking',
+                             f'{xml_id} debe apuntar a stock.picking')
+
+    def test_low_stock_report_action(self):
+        """La acción de alertas de stock mínimo apunta a product.template."""
+        action = self._get_action('inventory_custom.action_report_low_stock')
+        self.assertEqual(action.res_model, 'product.template')
+
+    def test_stock_by_location_report_action(self):
+        """La acción de stock por ubicación apunta a stock.quant."""
+        action = self._get_action('inventory_custom.action_report_stock_by_location')
+        self.assertEqual(action.res_model, 'stock.quant')
+
+    def test_stock_moves_report_action(self):
+        """La acción de historial de movimientos apunta a stock.move.line."""
+        action = self._get_action('inventory_custom.action_report_stock_moves')
+        self.assertEqual(action.res_model, 'stock.move.line')
+
+    def test_action_check_low_stock_no_error_when_empty(self):
+        """action_check_low_stock no falla cuando no hay productos con mínimo configurado."""
+        try:
+            self.env['product.template'].action_check_low_stock()
+        except Exception as e:
+            self.fail(f'action_check_low_stock lanzó excepción inesperada: {e}')
+
+    def test_action_check_low_stock_notifies_below_minimum(self):
+        """action_check_low_stock publica mensaje en productos con stock bajo el mínimo."""
+        product = self.env['product.template'].create({
+            'name': 'Producto Bajo Mínimo',
+            'type': 'product',
+            'min_stock_level': 10.0,
+        })
+        # qty_available = 0 < min_stock_level = 10 → debe notificar
+        initial_message_count = len(product.message_ids)
+        self.env['product.template'].action_check_low_stock()
+        self.assertGreater(
+            len(product.message_ids), initial_message_count,
+            'Debe publicar un mensaje en el chatter del producto bajo mínimo',
+        )
+
+    def test_action_check_low_stock_no_notification_above_minimum(self):
+        """action_check_low_stock no notifica productos con stock igual o mayor al mínimo."""
+        # Producto sin stock bajo mínimo (min=0 → se ignora)
+        product = self.env['product.template'].create({
+            'name': 'Producto Normal',
+            'type': 'product',
+            'min_stock_level': 0.0,
+        })
+        initial_message_count = len(product.message_ids)
+        self.env['product.template'].action_check_low_stock()
+        self.assertEqual(
+            len(product.message_ids), initial_message_count,
+            'No debe publicar mensajes en productos sin mínimo configurado',
+        )
+
+
 class TestStockInventoryAdjustmentLine(TransactionCase):
     """Tests para stock.inventory.adjustment.line"""
 

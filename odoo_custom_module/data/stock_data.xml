@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="stock_data_location_zone_a" model="stock.location">
+            <field name="name">Zona A</field>
+            <field name="location_type">zone</field>
+            <field name="usage">internal</field>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+
+        <record id="stock_data_location_zone_b" model="stock.location">
+            <field name="name">Zona B</field>
+            <field name="location_type">zone</field>
+            <field name="usage">internal</field>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+
+        <record id="stock_data_location_shelf_a1" model="stock.location">
+            <field name="name">Estante A1</field>
+            <field name="location_type">shelf</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock_data_location_zone_a"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="max_capacity">1000</field>
+        </record>
+
+        <record id="stock_data_location_shelf_a2" model="stock.location">
+            <field name="name">Estante A2</field>
+            <field name="location_type">shelf</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock_data_location_zone_a"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="max_capacity">1000</field>
+        </record>
+
+        <record id="stock_data_location_shelf_b1" model="stock.location">
+            <field name="name">Estante B1</field>
+            <field name="location_type">shelf</field>
+            <field name="usage">internal</field>
+            <field name="location_id" ref="stock_data_location_zone_b"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="max_capacity">1000</field>
+        </record>
+
+        <record id="stock_data_category_electronics" model="product.category">
+            <field name="name">Electrónica</field>
+            <field name="code">ELEC</field>
+            <field name="description">Productos electrónicos y tecnológicos</field>
+        </record>
+
+        <record id="stock_data_category_clothing" model="product.category">
+            <field name="name">Ropa</field>
+            <field name="code">CLOTH</field>
+            <field name="description">Prendas de vestir y accesorios</field>
+        </record>
+
+        <record id="stock_data_category_accessories" model="product.category">
+            <field name="name">Accesorios</field>
+            <field name="code">ACC</field>
+            <field name="description">Accesorios diversos</field>
+        </record>
+
+        <record id="stock_data_category_consumables" model="product.category">
+            <field name="name">Consumibles</field>
+            <field name="code">CONS</field>
+            <field name="description">Materiales consumibles de uso general</field>
+        </record>
+
+        <record id="stock_data_brand_generic" model="product.brand">
+            <field name="name">Genérico</field>
+            <field name="description">Productos de marca genérica o sin marca</field>
+            <field name="active">True</field>
+        </record>
+
+        <record id="stock_data_brand_premium" model="product.brand">
+            <field name="name">Premium</field>
+            <field name="description">Productos de alta calidad</field>
+            <field name="active">True</field>
+        </record>
+
+        <record id="stock_data_brand_economy" model="product.brand">
+            <field name="name">Económico</field>
+            <field name="description">Productos económicos</field>
+            <field name="active">True</field>
+        </record>
+    </data>
+</odoo>

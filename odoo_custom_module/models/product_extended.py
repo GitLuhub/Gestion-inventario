@@ -38,6 +38,30 @@ class ProductTemplate(models.Model):
                         'El nivel mínimo de stock no puede ser mayor que el nivel máximo.'
                     ))
 
+    def action_check_low_stock(self):
+        """Verifica productos con stock por debajo del mínimo y notifica en el chatter.
+        Diseñado para ser llamado desde un cron diario.
+        """
+        low_stock_products = self.search([
+            ('min_stock_level', '>', 0),
+            ('type', '=', 'product'),
+            ('active', '=', True),
+        ])
+        for product in low_stock_products:
+            if product.qty_available < product.min_stock_level:
+                product.message_post(
+                    body=_(
+                        'Alerta de stock mínimo: el stock actual (%(qty)s) está por debajo '
+                        'del mínimo definido (%(min)s).'
+                    ) % {
+                        'qty': product.qty_available,
+                        'min': product.min_stock_level,
+                    },
+                    subject=_('Stock Mínimo Alcanzado: %s') % product.name,
+                    message_type='notification',
+                    subtype_xmlid='mail.mt_note',
+                )
+
 
 class ProductBrand(models.Model):
     _name = 'product.brand'
