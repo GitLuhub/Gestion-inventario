@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 import time
 from datetime import datetime
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from .config import settings
 from .middleware import RequestIDMiddleware
@@ -12,6 +14,7 @@ from .routers import auth_router, products_router, inventory_router
 from .schemas import HealthResponse
 from .utils.logger import setup_json_logging, get_logger
 from .utils.odoo_client import get_odoo_client
+from .utils.rate_limiter import limiter
 
 setup_json_logging(settings.LOG_LEVEL)
 logger = get_logger(__name__)
@@ -56,6 +59,9 @@ app = FastAPI(
     openapi_url="/openapi.json",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 app.add_middleware(

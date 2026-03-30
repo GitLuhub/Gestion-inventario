@@ -26,8 +26,10 @@ export const authService = {
     return response.json()
   },
   
-  refresh: async (refreshToken: string): Promise<TokenResponse> => {
-    return apiClient.post<TokenResponse>('/api/v1/auth/refresh', { refresh_token: refreshToken })
+  // G2: El refresh token viaja en cookie httpOnly — no se envía en el body.
+  // El navegador lo adjunta automáticamente gracias a credentials: 'include'.
+  refresh: async (): Promise<TokenResponse> => {
+    return apiClient.post<TokenResponse>('/api/v1/auth/refresh')
   },
   
   logout: async (): Promise<void> => {
