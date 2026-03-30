@@ -96,13 +96,13 @@ groups:
     interval: 60s
     rules:
       - alert: ETLJobFailed
-        expr: etl_job_errors_total > 0
+        expr: increase(etl_job_errors_total[1h]) > 5
         for: 0m
         labels:
           severity: warning
         annotations:
-          summary: "ETL job has errors"
-          description: "ETL job has {{ $value }} errors"
+          summary: "ETL acumuló demasiados errores"
+          description: "ETL acumuló {{ $value }} errores en la última hora (umbral: 5)"
 
       - alert: ETLJobNotRunning
         expr: |
@@ -113,3 +113,37 @@ groups:
         annotations:
           summary: "ETL job has not run recently"
           description: "ETL job last ran successfully more than 24 hours ago"
+
+  - name: odoo_alerts
+    interval: 30s
+    rules:
+      - alert: OdooDown
+        expr: up{job="odoo_app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Odoo está caído"
+          description: "El servicio Odoo lleva más de 1 minuto sin responder"
+
+      - alert: OdooHighMemoryUsage
+        expr: |
+          (container_memory_usage_bytes{name="inventory_odoo_app"}
+          / container_spec_memory_limit_bytes{name="inventory_odoo_app"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Odoo usando más del 85% de memoria"
+          description: "Odoo consume {{ $value | humanizePercentage }} de su límite de memoria (4G)"
+
+      - alert: OdooWorkersSaturated
+        expr: |
+          sum(odoo_http_request_duration_seconds_count{job="odoo_app"}) by (instance)
+          / scalar(odoo_workers_count) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Workers de Odoo saturados"
+          description: "Más de 10 requests por worker activo durante 5 minutos"
