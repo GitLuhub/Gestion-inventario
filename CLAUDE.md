@@ -1684,12 +1684,7 @@ git remote add origin https://github.com/<usuario>/gestion-inventario.git
 git push -u origin main
 ```
 
-Luego reemplazar `luisbrito` en `README.md` con el usuario real:
-```bash
-sed -i 's|luisbrito/gestion-inventario|<usuario>/gestion-inventario|g' README.md
-git add README.md && git commit -m "docs: corregir URL del repositorio en README"
-git push
-```
+La URL del README ya fue actualizada a `Gitluhub/gestion-inventario`.
 
 Los badges de CI solo funcionan cuando el repo está publicado y el workflow ha corrido al menos una vez.
 

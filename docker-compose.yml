@@ -323,11 +323,12 @@ services:
     networks:
       - backend-network
     depends_on:
-      # RNF3: Grafana arranca solo cuando Prometheus ya acepta queries
+      # RNF3: Grafana arranca solo cuando Prometheus ya acepta queries.
+      # Loki NO está aquí porque pertenece al perfil "monitoring" y Docker Compose
+      # no permite depends_on sobre servicios que pueden no estar en el proyecto.
+      # Grafana se conecta a Loki como datasource cuando el perfil monitoring está activo.
       prometheus:
         condition: service_healthy
-      loki:
-        condition: service_started
     restart: unless-stopped
 
   # ----------------------------------------------------

@@ -1,8 +1,8 @@
 # Sistema de Gestión de Inventario Avanzado
 
 <!-- I1: Badges -->
-[![CI Pipeline](https://github.com/luisbrito/gestion-inventario/actions/workflows/ci.yml/badge.svg)](https://github.com/luisbrito/gestion-inventario/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)](https://github.com/luisbrito/gestion-inventario/actions)
+[![CI Pipeline](https://github.com/Gitluhub/gestion-inventario/actions/workflows/ci.yml/badge.svg)](https://github.com/Gitluhub/gestion-inventario/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)](https://github.com/Gitluhub/gestion-inventario/actions)
 [![Odoo](https://img.shields.io/badge/Odoo-16.0%20LTS-714B67?logo=odoo)](https://www.odoo.com)
 [![License: LGPL-3.0](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](docker-compose.yml)
@@ -145,7 +145,7 @@ El módulo extiende Odoo 16 con:
 | Wizard de ajuste rápido | `stock.inventory.wizard` |
 | Informes: stock, movimientos, alertas, histórico | vistas/acciones reutilizando modelos Odoo |
 
-Ver [`CLAUDE.md`](CLAUDE.md) para la documentación técnica completa del módulo.
+
 
 ---
 
@@ -160,7 +160,7 @@ Ver [`CLAUDE.md`](CLAUDE.md) para la documentación técnica completa del módul
 ### 1. Clonar y configurar
 
 ```bash
-git clone https://github.com/luisbrito/gestion-inventario.git
+git clone https://github.com/Gitluhub/gestion-inventario.git
 cd gestion-inventario
 cp .env.example .env
 ```
