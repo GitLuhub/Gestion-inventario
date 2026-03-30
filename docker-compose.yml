@@ -17,6 +17,8 @@ volumes:
     name: inventory_prometheus_data
   grafana_data:
     name: inventory_grafana_data
+  loki_data:
+    name: inventory_loki_data
 
 # ----------------------------------------------------
 # 2. Definición de secretos (para producción usar Docker Swarm secrets)
@@ -293,6 +295,7 @@ services:
       - backend-network
     depends_on:
       - prometheus
+      - loki
     restart: unless-stopped
 
   # ----------------------------------------------------
@@ -347,7 +350,44 @@ services:
       - monitoring
 
   # ----------------------------------------------------
-  # 4.11. PostgreSQL Exporter
+  # 4.11. Loki — Almacenamiento de logs (perfil: monitoring)
+  # ----------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: inventory_loki
+    hostname: loki
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./docker/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - backend-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # ----------------------------------------------------
+  # 4.12. Promtail — Agente de recolección de logs (perfil: monitoring)
+  # ----------------------------------------------------
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: inventory_promtail
+    hostname: promtail
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./docker/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log:/var/log:ro
+    networks:
+      - backend-network
+    depends_on:
+      - loki
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # ----------------------------------------------------
+  # 4.13. PostgreSQL Exporter
   # ----------------------------------------------------
   postgres_exporter:
     image: quay.io/prometheuscommunity/postgres-exporter:latest
