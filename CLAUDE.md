@@ -20,6 +20,8 @@
 10. [Limitaciones Conocidas](#10-limitaciones-conocidas)
 11. [Análisis de Cumplimiento PRD/Arquitectura](#11-análisis-de-cumplimiento-prdarquitectura)
 12. [Plan de Acción PRD — Brechas Pendientes](#12-plan-de-acción-prd--brechas-pendientes)
+13. [Auditoría CHECKLIST_PROYECTO_PROFESIONAL](#13-auditoría-checklist_proyecto_profesional)
+14. [Plan de Acción Checklist — Fases F–J](#14-plan-de-acción-checklist--fases-fj)
 
 ---
 
@@ -891,3 +893,759 @@ def _compute_totals(self):
 *Versión del módulo: 16.0.1.0.0*
 *Versión de Odoo: 16.0*
 *Autor del documento: Claude Code (auditoría PRD/Arquitectura)*
+
+---
+
+## 13. Auditoría CHECKLIST_PROYECTO_PROFESIONAL
+
+> Auditoría realizada el 2026-03-30 comparando el estado real del proyecto
+> contra `CHECKLIST_PROYECTO_PROFESIONAL.md`.
+> Alcance: los 13 dominios de la checklist aplicados a todo el stack
+> (módulo Odoo, API Gateway, Frontend, ETL, infraestructura).
+
+### Leyenda
+| Símbolo | Significado |
+|---------|-------------|
+| ✅ | Cumplido |
+| ⚠️ | Parcialmente cumplido — mejora identificada |
+| ❌ | No cumplido — brecha activa |
+| N/A | No aplica al contexto del proyecto |
+
+---
+
+### 13.1 Arquitectura y Diseño
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| RF y RNF documentados | ✅ | `CLAUDE.md` §1, `00_prd.md`, tablas de cumplimiento completas |
+| Diagrama de arquitectura | ✅ | `README.md` ASCII art + tabla de servicios |
+| Patrón arquitectónico justificado | ✅ | Monolito modular Odoo + microservicios ligeros documentado en PRD |
+| Límites síncronos/asíncronos identificados | ⚠️ | ETL es síncrono (cron), no hay cola de mensajes; no documentado explícitamente |
+| Entidades de dominio definidas antes del código | ✅ | Sección §4 de `CLAUDE.md` completa con todos los modelos y relaciones |
+| Convención de nombres establecida | ✅ | `snake_case` Python, `camelCase` TypeScript, `kebab-case` XML IDs — consistente |
+| Separación de capas (presentación/lógica/datos) | ✅ | FastAPI routers ≠ lógica ≠ OdooClient; Odoo MVC nativo |
+| Repository Pattern para acceso a datos | ⚠️ | `OdooClient` actúa como repositorio pero no hay interfaz formal; dificulta test unitario puro |
+| Sin magic numbers | ⚠️ | La mayoría usa constantes; algunos timeouts y límites hardcodeados en compose |
+| Sin sobre-ingeniería | ✅ | Complejidad justificada por requisitos |
+
+---
+
+### 13.2 Seguridad
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Contraseñas nunca en texto plano | ✅ | Odoo usa pbkdf2; API usa hashing de Odoo vía xmlrpc |
+| JWT access token corta duración (15–30 min) | ✅ | 30 min configurado en `settings.py` |
+| JWT refresh token 7 días | ✅ | Implementado en `auth.py` |
+| Refresh token en cookie **httpOnly + secure** | ❌ | Se usa `js-cookie` que escribe cookies accesibles a JS — NO httpOnly. Vulnerable a XSS |
+| `secure=True` en cookies en producción | ⚠️ | El código lo referencia pero no se fuerza en middleware |
+| Autorización granular por roles | ✅ | 3 grupos Odoo (manager/operator/viewer) + `get_current_user` en todos los endpoints |
+| Principio de mínimo privilegio | ✅ | ACL por modelo en `ir.model.access.csv` |
+| **Rate limiting** en endpoints de autenticación | ❌ | No implementado. `slowapi` no está en `requirements.txt` |
+| Validar inputs del servidor | ✅ | Pydantic v2 en todos los schemas; `ValidationError` en Odoo |
+| Sanitizar outputs (XSS) | ⚠️ | Nginx tiene `X-Content-Type-Options`; no hay sanitización explícita en API responses |
+| SQL injection protection | ✅ | ORM exclusivamente (Odoo ORM + SQLAlchemy) |
+| CORS restrictivo | ⚠️ | Orígenes configurables pero `CORS_ORIGINS` por defecto incluye localhost en prod-compose |
+| Headers de seguridad HTTP | ✅ | HSTS, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection en nginx |
+| Nunca commitear `.env` con secretos | ✅ | `.gitignore` cubre `.env*`; `.env` en repo no tiene valores reales |
+| `.env.example` documentado | ✅ | Existe con todas las variables y sin valores reales |
+| `.gitignore` completo antes del primer commit | ✅ | 180 líneas, muy exhaustivo |
+| Rotar SECRET_KEY entre entornos | ⚠️ | `setup_secrets.sh` genera valores únicos; no hay enforcement automatizado |
+| Variables de entorno para toda la config | ✅ | `Settings` clase en `config.py` de API y ETL |
+| Identificar datos PII | ⚠️ | Sistema de inventario — PII mínima; no documentado explícitamente |
+| Cifrado en reposo para datos sensibles | ❌ | No implementado (pgcrypto, SSE) |
+| HTTPS/TLS en tránsito | ✅ | nginx con TLS 1.2/1.3, certificados autofirmados dev / Let's Encrypt prod |
+| **AuditLog** (quién hizo qué, cuándo, IP) | ⚠️ | `mail.thread` en Odoo captura cambios de campos; no hay AuditLog formal en API Gateway |
+| Política de retención y borrado de datos | ⚠️ | Logs: 7 días (Loki); backups: 7 días; no documentado como política formal |
+
+---
+
+### 13.3 Base de Datos
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| UUIDs como primary keys | ❌ | Odoo usa INTEGER secuenciales; API Gateway expone `id: int`. Válido para sistema no distribuido pero colisiones posibles en futura expansión |
+| `created_at` / `updated_at` en todas las tablas | ✅ | Odoo auto: `create_date`, `write_date` en todo modelo |
+| Constraints en BD (NOT NULL, UNIQUE, FK) | ✅ | `_sql_constraints` en `adjustment.line`; Odoo gestiona FKs |
+| Cascade apropiado | ✅ | `ondelete='cascade'` en `adjustment_id` de líneas |
+| Soft delete | ✅ | Campo `active` en todos los modelos relevantes (patrón Odoo) |
+| Normalización 3NF | ✅ | Esquema normalizado; desnormalización solo donde justificada (`store=True` computed) |
+| **Herramienta de migraciones (Alembic)** | ❌ | Directorio `etl_service/alembic/versions/` existe pero **vacío y sin configurar** |
+| Migraciones reversibles (upgrade/downgrade) | ❌ | Sin migraciones creadas |
+| Índices en columnas de búsqueda frecuente | ✅ | `index=True` en `brand_id`, `manufacturer_ref`, `barcode`, `responsible_id` |
+| Índices compuestos para queries multi-filtro | ⚠️ | No hay índices compuestos explícitos; Odoo crea algunos internamente |
+| Detección y eliminación de N+1 queries | ✅ | `read_group` en vez de `len()`; `search_read` en vez de loops |
+| **Connection pooling** configurado | ⚠️ | Odoo usa pool interno (default); ETL no configura pool explícito para xmlrpc |
+| **Caché (Redis)** para datos que no cambian | ❌ | No implementado. Catálogos (marcas, razones) se consultan en cada request |
+| Backups automáticos | ✅ | `pg_backup` service, retención 7 días |
+
+---
+
+### 13.4 API / Backend
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Convenciones RESTful | ✅ | Sustantivos en plural, verbos HTTP correctos, status codes semánticos |
+| Versionado `/api/v1/` | ✅ | `API_V1_PREFIX` en `settings.py` |
+| Status codes semánticos | ✅ | 201 (create), 204 (delete), 422 (validation), 401 (auth) |
+| Paginación en listas | ✅ | `page` + `page_size` en `/products` e `/inventory/adjustments` |
+| Formato de respuesta estandarizado | ✅ | Pydantic schemas consistentes; `{"detail": "..."}` para errores |
+| Swagger/OpenAPI automático | ✅ | FastAPI genera `/docs` y `/redoc` automáticamente |
+| Identificar operaciones lentas/bloqueantes | ✅ | ETL en worker separado; Odoo calls con timeout |
+| Workers asíncronos para tareas lentas | ⚠️ | ETL usa cron (bloqueante); no hay Celery/RQ para tareas ad-hoc |
+| **Retry con backoff exponencial** | ✅ | `tenacity` en `OdooClient` y `OdooLoader` (3 intentos, min=2s, max=10s) |
+| **Circuit breaker** para servicios externos | ❌ | No implementado. Si Odoo está caído, la API falla sin fallback |
+| Exponer estado de tareas | ❌ | No hay endpoint de estado para jobs ETL |
+| Manejar todos los errores esperados | ✅ | Global exception handler en `main.py`; errores de Odoo capturados |
+| Timeouts en llamadas externas | ✅ | `ODOO_LIMIT_TIME_CPU/REAL` en `odoo.conf`; `LIMIT_REQUEST` configurado |
+| Validar tamaño/tipo de archivos | ✅ | `client_max_body_size 100M` en nginx |
+| Healthcheck endpoint con verificación de dependencias | ✅ | `/health` verifica conexión a Odoo y retorna `status: healthy/degraded` |
+
+---
+
+### 13.5 Frontend / UX
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Separar lógica de negocio de UI | ✅ | Zustand stores + SWR hooks separados de componentes |
+| React Query / SWR para data fetching | ✅ | SWR 2.2.4 implementado |
+| Estados de carga en operaciones asíncronas | ✅ | `isLoading` en hooks; spinner en DashboardLayout |
+| Estados de error con mensajes útiles | ✅ | `react-hot-toast` + mensajes inline en formularios |
+| **Interceptor de Axios para auto-refresh de token** | ❌ | `refreshAccessToken()` existe en `authStore` pero **no se llama automáticamente** en 401. El usuario recibe error en vez de refresh transparente |
+| Confirmación antes de acciones destructivas | ⚠️ | No verificado explícitamente; probable ausencia en eliminaciones |
+| Deshabilitar botones durante operación | ✅ | `isLoading` prop en botones de formularios |
+| Feedback inmediato (toast) | ✅ | `react-hot-toast` en operaciones CRUD |
+| Optimistic updates | ⚠️ | SWR tiene soporte pero no hay evidencia de uso explícito |
+| Mobile first | ⚠️ | Tailwind CSS configurado; no hay evidencia de media queries mobile-first |
+| Accesibilidad básica (WCAG AA mínimo) | ⚠️ | No verificado; no hay `aria-label`, `role` ni contraste documentado |
+| Tokens no en localStorage | ✅ | Cookies usadas (pero NO httpOnly — ver §13.2) |
+| Rutas protegidas | ✅ | `DashboardLayout` redirige a `/auth/login` si no autenticado |
+| Validación client + servidor | ✅ | `react-hook-form` en cliente; Pydantic en servidor |
+| No exponer info sensible en URL | ✅ | Sin tokens ni IDs de sesión en URLs |
+
+---
+
+### 13.6 Testing
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Pirámide de testing definida | ✅ | Unitarios (TransactionCase), integración, performance — documentado en §8 |
+| **Umbral mínimo de cobertura (≥80%)** | ❌ | No hay `--cov-fail-under` en CI ni en pytest config |
+| Tests escritos con el código | ✅ | Tests de modelos, seguridad y vistas presentes |
+| Tests independientes entre sí | ✅ | `TransactionCase` hace rollback tras cada test |
+| Lógica de negocio testeada de forma aislada | ⚠️ | Tests de Odoo requieren ORM completo (no puro unitario); API Gateway tiene mocks |
+| Mockear dependencias externas | ✅ | `api_gateway_service/tests/` usa mocks para llamadas a Odoo |
+| Cubrir casos límite | ⚠️ | `difference_qty` cero, negativo, positivo cubiertos; faltan edge cases en API (inputs vacíos, max values) |
+| Cubrir casos de error | ⚠️ | `UserError` en wizard y adjustment cubiertos; falta cobertura en API Gateway errors |
+| Tests con BD real (no in-memory) | ✅ | PostgreSQL real en CI; `TransactionCase` usa BD Odoo |
+| Flujo completo de casos críticos | ✅ | `TestAdjustmentValidateIntegration` cubre draft→done con stock.move |
+| Fixtures y factories | ✅ | `setUp` / `setUpClass` con datos mínimos necesarios |
+| **Tests de carga (Locust/k6)** | ❌ | `test_performance.py` mide timing interno pero no simula carga concurrente |
+| Objetivos de rendimiento como criterios de aceptación | ⚠️ | Definidos en `test_performance.py` (< 2s CRUD, < 5s informe) pero sin P95 ni error rate |
+| Ejecutar tests de carga antes de cada release | ❌ | No hay pipeline de load testing |
+
+---
+
+### 13.7 Rendimiento
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Medir antes de optimizar | ✅ | `test_performance.py` con `time.monotonic()` |
+| async/await correctamente | ✅ | FastAPI endpoints async; `asyncio` correcto |
+| Paginación server-side | ✅ | `page`/`page_size` en todos los endpoints de lista |
+| Compresión HTTP (gzip/brotli) | ✅ | `gzip on` + `gzip_comp_level 6` en nginx |
+| Streaming para archivos grandes | N/A | No hay descarga de archivos grandes en el scope actual |
+| Bundle size optimizado (code splitting) | ⚠️ | Next.js hace code splitting automático; no hay configuración explícita de lazy loading |
+| Memoización solo donde el profiler lo justifica | ✅ | No hay sobre-memoización |
+| **Caché del navegador para assets estáticos** | ❌ | nginx no tiene `Cache-Control` para assets estáticos |
+| Optimización de imágenes (WebP, lazy loading) | ⚠️ | `next/image` disponible pero uso no confirmado |
+
+---
+
+### 13.8 Observabilidad y Monitoreo
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| **Logs estructurados en JSON** | ❌ | API Gateway y ETL usan formato texto (`%(asctime)s - %(name)s - %(levelname)s - %(message)s`). Loki los recibe pero no puede filtrar por campo |
+| Log incluye timestamp, nivel, servicio, request_id | ❌ | No hay `request_id` en ningún log |
+| Niveles de log correctamente definidos | ✅ | Configurable via `LOG_LEVEL` env var |
+| Nunca loguear contraseñas/tokens/PII | ✅ | No hay evidencia de logging de secretos |
+| Métricas en formato Prometheus | ✅ | `REQUEST_COUNT`, `REQUEST_LATENCY` en API Gateway; scraping configurado |
+| Medir latencia P50/P95/P99, tasa de requests, errores | ✅ | Histograma en API Gateway; dashboard en Grafana |
+| Dashboard operativo (Grafana) | ✅ | 5 dashboards: odoo, etl, database, host, api-gateway |
+| Alertas configuradas | ✅ | 14 alertas activas en `prometheus/rules/alerts.yml` |
+| **request_id único por petición, propagado** | ❌ | No implementado en ningún servicio |
+| **AuditLog para acciones importantes** | ⚠️ | `mail.thread` tracking en Odoo (cambios de estado, campos con `tracking=True`); sin AuditLog en API Gateway |
+| Correlacionar logs entre servicios con request_id | ❌ | Imposible sin request_id |
+
+---
+
+### 13.9 Infraestructura y DevOps
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Dockerizado desde el inicio | ✅ | 9+ servicios en Docker Compose |
+| **Multi-stage builds en Dockerfiles** | ❌ | Los 3 Dockerfiles custom (API, Frontend, ETL) son single-stage. Impacto: imágenes ~3–5x más grandes de lo necesario |
+| No `pip install` en runtime | ✅ | Instalación solo en build time |
+| Healthchecks en todos los servicios críticos | ✅ | Todos los servicios con healthcheck tras Fase E |
+| Resource limits definidos | ✅ | Memory limits y reservations en todos los servicios |
+| **3 entornos: dev / staging / production** | ⚠️ | `docker-compose.dev.yml` y `docker-compose.prod.yml` existen; staging referenciado en CD pero sin `docker-compose.staging.yml` propio |
+| Staging idéntico a producción | ⚠️ | Sin archivo staging separado, no se puede garantizar paridad |
+| Nunca probar en producción | ✅ | CD requiere environment "production" con aprobación manual |
+| **CI que ejecuta tests en cada push** | ✅ | `.github/workflows/ci.yml` cubre lint + tests + docker build |
+| Pipeline falla si tests fallan | ✅ | Configurado en CI |
+| **Pipeline falla si cobertura cae** | ❌ | No hay `--cov-fail-under` en CI |
+| Build y push de imágenes automático | ✅ | GHCR push en CI tras tests exitosos |
+| Despliegue continuo a staging | ✅ | `.github/workflows/cd.yml` hace deploy SSH a staging |
+| Backups automáticos con retención | ✅ | `pg_backup` service, 7 días |
+| **Probar restauración de backups** | ❌ | No hay script ni procedimiento documentado de restore test |
+| **RTO y RPO documentados** | ❌ | No documentados en README ni CLAUDE.md |
+
+---
+
+### 13.10 Control de Versiones
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Estrategia de branching definida | ❌ | Solo rama `main`. Sin `develop`, sin feature branches. No documentado |
+| Commit messages descriptivos (`tipo(scope): desc`) | ✅ | Semantic commits excelentes en todo el historial |
+| Ramas por feature/bugfix | ❌ | Todos los commits van directamente a `main` |
+| **Branch protection en main** | ❌ | Sin reglas de protección configuradas en GitHub (PR requerido, CI verde) |
+| `.gitignore` antes del primer commit | ✅ | Bien configurado desde el inicio |
+| Nunca commitear `.env` con valores reales | ✅ | `.env` en repo solo referencia archivos de secretos |
+| Sin API keys / passwords en repo | ✅ | `secrets/` excluido en `.gitignore` |
+| Sin archivos de BD en repo | ✅ | `*.sql`, `*.dump`, volúmenes excluidos |
+| Sin dependencias en repo | ✅ | `node_modules/`, `.venv/` excluidos |
+| Sin artefactos de build | ✅ | `dist/`, `__pycache__/`, `.next/` excluidos |
+| Sin archivos de IDE | ✅ | `.vscode/`, `.idea/` excluidos |
+
+---
+
+### 13.11 Documentación
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Código auto-documentado | ✅ | Nombres descriptivos, funciones enfocadas |
+| Comentarios solo donde la lógica no es obvia | ✅ | Comentarios de "por qué" en odoo.conf y nginx tras Fase E |
+| Documentar decisiones de diseño importantes | ✅ | `CLAUDE.md` §7 explica decisiones Odoo; `lessons_learned.md` |
+| API documentada y actualizada (Swagger) | ✅ | FastAPI auto-genera `/docs` con todos los schemas |
+| Códigos de error documentados | ⚠️ | HTTP status codes correctos; falta documentación de dominio-específicos |
+| Ejemplos de request/response | ⚠️ | Schemas Pydantic presentes pero sin ejemplos (`example=` en Field) |
+| README: qué hace, por qué existe, cómo arrancarlo | ✅ | README de 313 líneas cubre todo esto |
+| Instrucciones de instalación funcionales | ✅ | 4 pasos documentados + configuración de secretos |
+| Variables de entorno documentadas | ✅ | `.env.example` con todas las variables |
+| Instrucciones de tests | ✅ | Sección "Testing" en README |
+| **Badges (cobertura, build, versión)** | ❌ | No hay badges visibles en README |
+| **GIF o video del flujo principal** | ❌ | No hay capturas de pantalla ni demos visuales |
+| **Sección de decisiones técnicas en README** | ⚠️ | Existe en `CLAUDE.md` pero no en `README.md` |
+
+---
+
+### 13.12 Compliance y Legal
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| Identificar si aplica GDPR | ⚠️ | Sistema de inventario venezolano (portfolio); GDPR no aplica directamente pero aplica LGPD si opera en LatAm |
+| Política de retención de datos documentada | ⚠️ | Logs 7 días, backups 7 días — implementado, no documentado como política formal |
+| Regulaciones HIPAA/PCI-DSS | N/A | No hay datos de salud ni financieros de tarjetas |
+| Términos de uso y política de privacidad | N/A | Portfolio, no sistema público |
+
+---
+
+### 13.13 Presentación (Portfolio)
+
+| Ítem | Estado | Evidencia / Brecha |
+|------|--------|-------------------|
+| **Demo pública funcional con datos de ejemplo** | ❌ | No hay despliegue público; seed data básico en `stock_data.xml` |
+| **README con GIF/video del flujo** | ❌ | README solo tiene texto; 0 imágenes |
+| **Sección de decisiones técnicas en README** | ❌ | En CLAUDE.md pero no en README (reclutador no lee CLAUDE.md) |
+| **Badges visibles** | ❌ | Sin badge de CI, cobertura ni versión |
+| Datos de acceso de prueba visibles | ✅ | `admin/admin` mencionado en README |
+| Sin TODO comments en código público | ⚠️ | No verificado exhaustivamente |
+| Sin código comentado | ⚠️ | No verificado exhaustivamente |
+| Sin debug logs | ⚠️ | No verificado exhaustivamente |
+
+---
+
+### 13.14 Resumen de Brechas por Criticidad
+
+#### ❌ Brechas Críticas (impacto directo en seguridad, calidad o portfolio)
+
+| ID | Categoría | Brecha | Impacto |
+|----|-----------|--------|---------|
+| GAP-01 | Seguridad | Rate limiting no implementado en API Gateway | Alto: autenticación vulnerable a fuerza bruta |
+| GAP-02 | Seguridad | Cookie refresh token NO es httpOnly (js-cookie accesible a JS) | Alto: vulnerable a XSS token theft |
+| GAP-03 | Observabilidad | Logs en texto plano, sin `request_id`, sin correlación entre servicios | Alto: depuración en producción extremadamente difícil |
+| GAP-04 | Frontend | Token refresh NO automático en 401 — usuario recibe error en vez de re-auth silenciosa | Alto: UX rota al expirar token |
+| GAP-05 | Infraestructura | Dockerfiles single-stage — imágenes de producción 3–5x más grandes e inseguras | Alto: expone source code, node_modules, dev tools |
+| GAP-06 | Portfolio | Sin badges, sin GIF/capturas, sin sección "¿Por qué estas tecnologías?" en README | Alto: primera impresión de un reclutador dura 30 segundos |
+| GAP-07 | Testing | Sin umbral de cobertura mínima en CI — cobertura puede caer sin detectarse | Medio-Alto: deuda técnica silenciosa |
+| GAP-08 | Base de Datos | Alembic configurado a medias — directorio vacío, sin migración base | Medio-Alto: cambios futuros de esquema sin trazabilidad |
+| GAP-09 | Resiliencia | Sin circuit breaker para llamadas a Odoo — una caída de Odoo tumba toda la API | Medio: cascada de fallos |
+| GAP-10 | Control versiones | Sin branch protection en main — commits directos sin PR ni review | Medio: historial de calidad no garantizado |
+
+#### ⚠️ Brechas Medias (mejoran calidad pero no bloquean)
+
+| ID | Categoría | Brecha |
+|----|-----------|--------|
+| GAP-11 | Infraestructura | Sin `docker-compose.staging.yml` — staging no es idéntico a producción |
+| GAP-12 | Infraestructura | Sin script/procedimiento de test de restauración de backups |
+| GAP-13 | Infraestructura | RTO y RPO no documentados |
+| GAP-14 | Rendimiento | Sin caché en navegador para assets estáticos (nginx sin `Cache-Control`) |
+| GAP-15 | Testing | Sin tests de carga (Locust/k6) — P95 y error rate no validados bajo carga real |
+| GAP-16 | Frontend | Refresh token interceptor ausente |
+| GAP-17 | Seguridad | AuditLog formal ausente en API Gateway (IP, user, action, timestamp) |
+| GAP-18 | Documentación | Sin ejemplos `example=` en schemas Pydantic para Swagger más rico |
+| GAP-19 | Base de Datos | Sin caché Redis para catálogos (marcas, razones, tipos) |
+
+---
+
+## 14. Plan de Acción Checklist — Fases F–J
+
+> Las fases están ordenadas por **impacto en portfolio + seguridad + calidad**.
+> Cada fase es independiente y puede ejecutarse en cualquier orden dentro del tier.
+> **Tier 1 (F, G)** debe completarse antes que Tier 2 (H, I) y Tier 3 (J).
+
+---
+
+### FASE F — Observabilidad Estructurada 🔲 PENDIENTE
+> **GAP-03**: Logs JSON + request_id + correlación entre servicios
+> **Impacto:** Crítico para debugging en producción; diferencia un proyecto amateur de uno profesional
+
+#### F1 — JSON structured logging + request_id en API Gateway
+
+**Archivos:** `api_gateway_service/src/main.py`, `api_gateway_service/src/utils/logger.py` (nuevo)
+
+```python
+# logger.py — reemplazar logging básico por structlog o python-json-logger
+import logging
+import json
+from datetime import datetime, timezone
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "service": "api-gateway",
+            "logger": record.name,
+            "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", None),
+            "user_id": getattr(record, "user_id", None),
+        }
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+```
+
+Middleware que genera y propaga `X-Request-ID`:
+```python
+import uuid
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+```
+
+#### F2 — JSON structured logging en ETL Service
+
+**Archivos:** `etl_service/src/utils/logger_util.py`
+
+Reemplazar formatter texto por JSONFormatter idéntico al de API Gateway.
+Incluir campos: `timestamp`, `level`, `service: "etl"`, `job_run_id`, `message`.
+
+#### F3 — Propagación de request_id a llamadas Odoo
+
+**Archivo:** `api_gateway_service/src/utils/odoo_client.py`
+
+Agregar header `X-Request-ID` a todas las llamadas xmlrpc:
+- El header se inyecta desde `request.state.request_id` en cada endpoint
+- Se pasa como parámetro de contexto al `OdooClient`
+
+---
+
+### FASE G — Seguridad Aplicada 🔲 PENDIENTE
+> **GAP-01, GAP-02, GAP-04**: Rate limiting + httpOnly cookies + auto-refresh token
+
+#### G1 — Rate Limiting en API Gateway
+
+**Archivos:** `api_gateway_service/requirements.txt`, `api_gateway_service/src/main.py`, `api_gateway_service/src/routers/auth.py`
+
+```python
+# requirements.txt: agregar slowapi==0.1.9
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# En auth.py:
+@router.post("/login")
+@limiter.limit("5/minute")  # máximo 5 intentos por minuto por IP
+async def login(request: Request, ...):
+    ...
+
+@router.post("/refresh")
+@limiter.limit("10/minute")
+async def refresh_token(request: Request, ...):
+    ...
+```
+
+#### G2 — httpOnly cookie para refresh token
+
+**Archivos:** `api_gateway_service/src/routers/auth.py`, `frontend/src/lib/auth.ts`
+
+El endpoint `/login` y `/refresh` deben enviar el refresh token en una cookie httpOnly:
+```python
+response.set_cookie(
+    key="refresh_token",
+    value=refresh_token,
+    httponly=True,          # no accesible desde JS
+    secure=settings.HTTPS_ENABLED,
+    samesite="lax",
+    max_age=60 * 60 * 24 * 7,
+)
+```
+El frontend lee el refresh token desde cookie httpOnly (no necesita js-cookie para este campo).
+
+#### G3 — Interceptor auto-refresh de token en Frontend
+
+**Archivos:** `frontend/src/lib/api.ts`, `frontend/src/stores/authStore.ts`
+
+```typescript
+// api.ts — wrapper de fetch con retry automático en 401
+async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  let response = await fetch(url, {
+    ...options,
+    headers: { ...options.headers, Authorization: `Bearer ${getToken()}` },
+    credentials: 'include',  // envía cookies httpOnly
+  })
+
+  if (response.status === 401) {
+    const refreshed = await useAuthStore.getState().refreshAccessToken()
+    if (refreshed) {
+      response = await fetch(url, {
+        ...options,
+        headers: { ...options.headers, Authorization: `Bearer ${getToken()}` },
+        credentials: 'include',
+      })
+    } else {
+      useAuthStore.getState().logout()
+    }
+  }
+  return response
+}
+```
+
+---
+
+### FASE H — Infraestructura Profesional 🔲 PENDIENTE
+> **GAP-05, GAP-07, GAP-08, GAP-10, GAP-11, GAP-12, GAP-13**
+
+#### H1 — Multi-stage Dockerfiles
+
+**API Gateway** (`api_gateway_service/Dockerfile`):
+```dockerfile
+# Stage 1: builder
+FROM python:3.10-slim AS builder
+WORKDIR /build
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+# Stage 2: runtime
+FROM python:3.10-slim
+WORKDIR /app
+COPY --from=builder /root/.local /root/.local
+COPY src/ ./src/
+ENV PATH=/root/.local/bin:$PATH
+USER nobody
+HEALTHCHECK CMD curl -f http://localhost:8000/health || exit 1
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+```
+
+**Frontend** (`frontend/Dockerfile`):
+```dockerfile
+# Stage 1: deps
+FROM node:18-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --only=production
+
+# Stage 2: builder
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 3: runner
+FROM node:18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+USER nextjs
+CMD ["node", "server.js"]
+```
+
+**ETL Service** (`etl_service/Dockerfile`): similar a API Gateway pero sin el servidor HTTP.
+
+#### H2 — Coverage threshold en CI
+
+**Archivo:** `.github/workflows/ci.yml`
+
+```yaml
+- name: Run tests with coverage
+  run: |
+    pytest tests/ \
+      --cov=src \
+      --cov-report=xml \
+      --cov-report=term-missing \
+      --cov-fail-under=80
+```
+
+Aplicar en jobs de ETL y API Gateway.
+
+#### H3 — Alembic configurado con migración inicial
+
+**Archivos:** `etl_service/alembic.ini`, `etl_service/alembic/env.py`, `etl_service/alembic/versions/001_initial.py`
+
+Configurar Alembic para gestionar el schema de la BD de ETL (tablas de control de jobs, registro de ejecuciones). Al menos una migración inicial y su downgrade.
+
+#### H4 — docker-compose.staging.yml
+
+**Archivo nuevo:** `docker-compose.staging.yml`
+
+Réplica de `docker-compose.prod.yml` con:
+- Variables de entorno de staging (distinto dominio, credenciales staging)
+- Mismo número de replicas que producción
+- Perfil `monitoring` activo por defecto
+
+#### H5 — Script de test de restauración de backup
+
+**Archivo nuevo:** `docker/backup/test_restore.sh`
+
+```bash
+#!/bin/sh
+# Verifica que el último backup puede restaurarse en una BD temporal
+LATEST=$(ls -t /backups/*.sql.gz | head -1)
+createdb -h pg_db -U $POSTGRES_USER restore_test_db
+gunzip -c "$LATEST" | psql -h pg_db -U $POSTGRES_USER restore_test_db
+dropdb -h pg_db -U $POSTGRES_USER restore_test_db
+echo "Restore test OK: $LATEST"
+```
+
+#### H6 — RTO/RPO documentados
+
+**Archivo:** `README.md` sección "Disaster Recovery"
+
+```
+RPO (Recovery Point Objective): 24 horas (backup diario a las 2am)
+RTO (Recovery Time Objective): ~30 minutos (restore + restart de servicios)
+```
+
+#### H7 — Branch protection y estrategia de branching
+
+**Archivo:** `README.md` sección "Contribución" o `.github/CONTRIBUTING.md` (nuevo)
+
+Documentar trunk-based development:
+- `main` — producción (protegida: requiere PR + CI verde)
+- Feature branches: `feat/nombre-feature`
+- Bugfix branches: `fix/descripcion-bug`
+Configurar en GitHub: Settings → Branches → Add rule → `main`.
+
+---
+
+### FASE I — Portfolio y Presentación 🔲 PENDIENTE
+> **GAP-06**: Primera impresión en 30 segundos
+
+#### I1 — Badges en README
+
+**Archivo:** `README.md` — agregar al inicio:
+
+```markdown
+[![CI](https://github.com/USUARIO/REPO/actions/workflows/ci.yml/badge.svg)](...)
+[![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)]()
+[![Odoo](https://img.shields.io/badge/Odoo-16.0-purple)]()
+[![License](https://img.shields.io/badge/License-LGPL--3.0-blue)]()
+```
+
+#### I2 — Screenshots / demo visual en README
+
+**Archivo:** `README.md`, directorio `docs/screenshots/` (nuevo)
+
+Añadir sección "📸 Capturas de Pantalla" con:
+- Dashboard principal del módulo Odoo
+- Formulario de ajuste de inventario (con los nuevos campos total_surplus/shortage)
+- Vista de informes
+- Dashboard Grafana de Odoo metrics
+- Swagger UI (`/docs`) del API Gateway
+
+#### I3 — Sección "Decisiones Técnicas" en README
+
+**Archivo:** `README.md`
+
+Sección que responda:
+- ¿Por qué Odoo 16 en vez de un backend custom? → ERP probado, módulos de stock existentes
+- ¿Por qué FastAPI en vez de DRF? → async nativo, OpenAPI automático, tipado fuerte
+- ¿Por qué Next.js 14? → App Router, SSR/SSG, ecosistema React
+- ¿Por qué Docker Compose en vez de Kubernetes? → Scope apropiado para el tamaño del proyecto
+- ¿Por qué Loki en vez de ELK? → Menor footprint, integración nativa con Grafana
+
+#### I4 — Seed data script para demo reproducible
+
+**Archivo nuevo:** `scripts/seed_demo.sh`
+
+Script que:
+1. Espera a que Odoo esté listo
+2. Crea usuario de demo con grupo `inventory_operator`
+3. Crea 10 productos con marcas, categorías y niveles de stock
+4. Crea 3 ajustes de inventario en distintos estados (draft, done)
+5. Genera datos en las ubicaciones de `stock_data.xml`
+
+---
+
+### FASE J — Calidad Avanzada 🔲 PENDIENTE
+> Mejoras de calidad que elevan el proyecto a nivel enterprise
+
+#### J1 — Circuit Breaker para OdooClient
+
+**Archivo:** `api_gateway_service/src/utils/odoo_client.py`
+
+```python
+# requirements.txt: agregar pybreaker==1.2.0
+import pybreaker
+
+odoo_breaker = pybreaker.CircuitBreaker(
+    fail_max=5,           # abre el circuito tras 5 fallos consecutivos
+    reset_timeout=30,     # intenta recuperarse tras 30 segundos
+)
+
+@odoo_breaker
+def _execute(self, model, method, *args):
+    return self._client.execute_kw(...)
+```
+
+Retorna `503 Service Unavailable` con mensaje claro cuando el circuito está abierto.
+
+#### J2 — Cache-Control para assets estáticos en nginx
+
+**Archivo:** `docker/nginx/conf.d/default.conf`
+
+```nginx
+# Assets estáticos de Next.js (immutable — el hash cambia con cada build)
+location /_next/static/ {
+    proxy_pass http://frontend_backend;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+}
+
+# Assets públicos
+location /static/ {
+    proxy_pass http://frontend_backend;
+    add_header Cache-Control "public, max-age=86400";
+}
+```
+
+#### J3 — Tests de carga con Locust
+
+**Archivo nuevo:** `tests/load/locustfile.py`
+
+```python
+from locust import HttpUser, task, between
+
+class InventoryUser(HttpUser):
+    wait_time = between(1, 3)
+
+    def on_start(self):
+        self.client.post("/api/v1/auth/login", json={
+            "username": "admin", "password": "admin"
+        })
+
+    @task(3)
+    def list_products(self):
+        self.client.get("/api/v1/products?page=1&page_size=20")
+
+    @task(1)
+    def get_low_stock(self):
+        self.client.get("/api/v1/products/search/low-stock")
+```
+
+Criterios de aceptación (documentar en README):
+- P95 < 500ms para GET de listas
+- Error rate < 1% bajo 50 usuarios concurrentes
+
+#### J4 — AuditLog formal en API Gateway
+
+**Archivo nuevo:** `api_gateway_service/src/utils/audit.py`
+
+```python
+def log_audit_event(
+    action: str,
+    user_id: int | None,
+    resource: str,
+    resource_id: str | None,
+    ip: str,
+    request_id: str,
+    status: str,
+    details: dict | None = None,
+):
+    logger.info(
+        "audit_event",
+        extra={
+            "audit": True,
+            "action": action,
+            "user_id": user_id,
+            "resource": resource,
+            "resource_id": resource_id,
+            "ip": ip,
+            "request_id": request_id,
+            "status": status,
+            "details": details or {},
+        }
+    )
+```
+
+Llamar en: login, logout, creación/modificación de productos, ajustes de inventario.
+
+#### J5 — Ejemplos en schemas Pydantic (Swagger más rico)
+
+**Archivo:** `api_gateway_service/src/schemas/schemas.py`
+
+```python
+class ProductCreate(BaseModel):
+    name: str = Field(..., example="Laptop HP EliteBook", min_length=1)
+    min_stock_level: float = Field(0.0, example=5.0, ge=0)
+    brand_id: int | None = Field(None, example=1)
+```
+
+---
+
+### Resumen del Plan Checklist
+
+| Fase | Descripción | GAPs que resuelve | Prioridad |
+|------|-------------|-------------------|-----------|
+| **F** | Observabilidad estructurada (JSON logs + request_id) | GAP-03 | 🔴 Alta |
+| **G** | Seguridad aplicada (rate limiting + httpOnly + auto-refresh) | GAP-01, GAP-02, GAP-04 | 🔴 Alta |
+| **H** | Infraestructura profesional (multi-stage, coverage, staging, RTO/RPO) | GAP-05, GAP-07, GAP-08, GAP-10–13 | 🟠 Media-Alta |
+| **I** | Portfolio y presentación (badges, screenshots, decisiones técnicas, seed) | GAP-06 | 🟠 Media-Alta |
+| **J** | Calidad avanzada (circuit breaker, load tests, audit log, cache) | GAP-09, GAP-14–19 | 🟡 Media |
+
+**Orden de ejecución recomendado:** F → G → I → H → J
+
+> La Fase I (presentación) se prioriza sobre H porque el impacto en portfolio es
+> inmediato y el esfuerzo es bajo. Un proyecto invisible técnicamente correcto
+> no consigue entrevistas.
+
+---
+
+*Última actualización: 2026-03-30 (Auditoría CHECKLIST_PROYECTO_PROFESIONAL — Fases F–J definidas)*
