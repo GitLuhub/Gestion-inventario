@@ -78,10 +78,6 @@
             <field name="view_mode">tree,form</field>
         </record>
 
-        <menuitem id="menu_product_brand" 
-                  name="Marcas" 
-                  parent="stock.menu_stock_inventory_control"
-                  action="action_product_brand"
-                  sequence="5"/>
+        <!-- menu_product_brand is defined in menu_views.xml under the custom module root menu -->
     </data>
 </odoo>
