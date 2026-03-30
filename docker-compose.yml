@@ -91,6 +91,7 @@ services:
     volumes:
       - odoo_data:/var/lib/odoo
       - odoo_addons:/mnt/extra-addons
+      - ./docker/odoo/odoo.conf:/etc/odoo/odoo.conf:ro
     networks:
       - backend-network
     ports:

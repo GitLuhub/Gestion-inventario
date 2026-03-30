@@ -13,9 +13,13 @@ services:
     env_file:
       - .env.local
     environment:
-      ODOO_LOGLEVEL: debug
+      ODOO_LOGLEVEL: info
+    depends_on:
+      pg_db:
+        condition: service_started
     volumes:
-      - ./odoo_custom_module:/mnt/extra-addons/custom_module
+      - ./odoo_custom_module:/mnt/extra-addons/inventory_custom
+      - ./docker/odoo/odoo.conf:/etc/odoo/odoo.conf:ro
     ports:
       - "8069:8069"
 
