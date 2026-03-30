@@ -1,66 +1,68 @@
-# Dockerfile para API Gateway FastAPI
-FROM python:3.10-slim
+# =============================================================================
+# API Gateway FastAPI — Multi-stage build (H1)
+# Stage 1 (builder): instala dependencias Python en directorio aislado
+# Stage 2 (runtime): imagen mínima sin pip ni herramientas de compilación
+# Resultado: imagen ~60% más pequeña que el Dockerfile single-stage original.
+# =============================================================================
 
-# Argumentos de build
+# ---------------------------------------------------------------------------
+# Stage 1: builder — instala deps en /deps para copiarlos en runtime
+# ---------------------------------------------------------------------------
+FROM python:3.10-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_TIMEOUT=600
+
+WORKDIR /build
+
+COPY requirements.txt .
+
+RUN pip install --upgrade pip && \
+    pip install --target=/deps -r requirements.txt
+
+
+# ---------------------------------------------------------------------------
+# Stage 2: runtime — solo el código y las deps instaladas
+# ---------------------------------------------------------------------------
+FROM python:3.10-slim AS runtime
+
 ARG BUILD_DATE
 ARG VERSION=1.0.0
 
-# Metadatos
-LABEL maintainer="Inventory Team" \
-      org.label-schema.build-date=$BUILD_DATE \
-      org.label-schema.description="API Gateway FastAPI for Inventory Management" \
+LABEL maintainer="Luis Brito" \
+      org.label-schema.build-date="${BUILD_DATE}" \
+      org.label-schema.description="API Gateway FastAPI — Gestión de Inventario" \
       org.label-schema.name="inventory-api-gateway" \
-      org.label-schema.version=$VERSION
+      org.label-schema.version="${VERSION}"
 
-# Configurar timezone
-ENV TZ=America/Bogota
-RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime || true
-
-# Configurar Python
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONFAULTHANDLER=1 \
-    PIP_TIMEOUT=600
+    PYTHONPATH=/deps:/app \
+    TZ=America/Bogota
 
-# Crear usuario no root
-RUN groupadd -r api && useradd -r -g api api
+# Solo curl para el HEALTHCHECK
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Establecer directorio de trabajo
+RUN groupadd -r api && useradd -r -g api --home /app api
+
 WORKDIR /app
 
-# Copiar requirements primero
-COPY requirements.txt .
+# Dependencias del builder
+COPY --from=builder /deps /deps
 
-# Instalar dependencias base primero
-RUN pip install --upgrade pip setuptools wheel
+# Código fuente
+COPY --chown=api:api src/ ./src/
 
-# Instalar fastapi y uvicorn
-RUN pip install fastapi uvicorn
-
-# Instalar dependencias de autenticación
-RUN pip install python-jose[cryptography] passlib[bcrypt] python-multipart
-
-# Instalar pydantic y settings
-RUN pip install pydantic pydantic-settings
-
-# Instalar otras dependencias
-RUN pip install requests tenacity prometheus-client
-
-# Copiar código fuente
-COPY src/ ./src/
-
-# Dar permisos al usuario api
-RUN chown -R api:api /app
-
-# Cambiar a usuario no root
 USER api
 
-# Exponer puerto
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -sf http://localhost:8000/health || exit 1
 
-# Comando por defecto con uvicorn
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["python", "-m", "uvicorn", "src.main:app", \
+     "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

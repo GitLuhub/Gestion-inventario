@@ -50,10 +50,12 @@ jobs:
           pip install flake8
           flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
-      - name: ETL Service - Run tests
+      - name: ETL Service - Run tests with coverage
         run: |
           cd etl_service
-          pytest tests/ -v --tb=short
+          pytest tests/ -v --tb=short \
+            --cov=src --cov-report=xml --cov-report=term-missing \
+            --cov-fail-under=80
         env:
           DATABASE_URL: postgresql://odoo:odoo@localhost:5432/odoo
 
@@ -69,10 +71,12 @@ jobs:
           pip install flake8
           flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
 
-      - name: API Gateway - Run tests
+      - name: API Gateway - Run tests with coverage
         run: |
           cd api_gateway_service
-          pytest tests/ -v --tb=short
+          pytest tests/ -v --tb=short \
+            --cov=src --cov-report=xml --cov-report=term-missing \
+            --cov-fail-under=80
 
       - name: Frontend - Setup Node.js
         uses: actions/setup-node@v4
@@ -95,6 +99,11 @@ jobs:
         run: |
           cd frontend
           npm run type-check
+
+      - name: Frontend - Run tests with coverage
+        run: |
+          cd frontend
+          npm run test:coverage -- --coverageThreshold='{"global":{"lines":80,"functions":80,"branches":80}}'
 
       - name: Frontend - Build
         run: |

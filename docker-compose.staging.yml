@@ -1,0 +1,99 @@
+# docker-compose.staging.yml — Entorno de staging (H4)
+# =============================================================================
+# Se usa como override sobre docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+#     --profile monitoring up -d --build
+#
+# Diferencias con producción:
+#   - 1 réplica por servicio (recursos de staging habitualmente menores)
+#   - Variables de entorno apuntan a staging (dominio, credenciales)
+#   - Monitoreo activo por defecto (igual que producción)
+#   - Backup desactivado en staging (para no contaminar backups de prod)
+#   - Certificados TLS de staging (Let's Encrypt staging CA)
+#
+# ¿Por qué un archivo separado en lugar de usar el perfil "staging"?
+# Permite controlar exactamente qué sobreescrituras aplican en staging
+# sin riesgo de que una variable de producción se filtre accidentalmente.
+# =============================================================================
+
+services:
+
+  odoo_app:
+    environment:
+      ODOO_LOGLEVEL: debug           # más verboso en staging para facilitar diagnóstico
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  api_gateway:
+    environment:
+      LOG_LEVEL: debug
+      CORS_ORIGINS: "${STAGING_CORS_ORIGINS:-http://staging.localhost:3000}"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  frontend:
+    environment:
+      NEXT_PUBLIC_API_URL: "${STAGING_API_URL:-http://staging.localhost:8000}"
+      NODE_ENV: production
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  etl_service:
+    environment:
+      ETL_LOG_LEVEL: DEBUG
+      # En staging el ETL puede ejecutarse cada hora en lugar de cada 15 min
+      ETL_SCHEDULE_CRON: "0 * * * *"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  nginx:
+    image: nginx:stable-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      # Certificados de staging (Let's Encrypt staging CA o self-signed)
+      - ./secrets/certs:/etc/nginx/certs:ro
+
+  prometheus:
+    # Monitoreo activo en staging — misma configuración que producción
+    profiles: []   # eliminar perfil para que inicie siempre en staging
+
+  grafana:
+    profiles: []
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD no definida}"
+      GF_SERVER_ROOT_URL: "${STAGING_GRAFANA_URL:-http://staging.localhost:3001}"
+
+  loki:
+    profiles: []   # logs activos en staging
+
+  promtail:
+    profiles: []
+
+  # Backup DESACTIVADO en staging — no queremos backups de datos de prueba
+  pg_backup:
+    profiles:
+      - production   # solo activo explícitamente en producción
