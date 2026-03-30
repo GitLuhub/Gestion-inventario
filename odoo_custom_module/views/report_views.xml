@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- RF7: Informes de inventario -->
+
+        <!-- 1. Stock actual por producto y ubicación -->
+        <record id="action_report_stock_by_location" model="ir.actions.act_window">
+            <field name="name">Stock por Ubicación</field>
+            <field name="res_model">stock.quant</field>
+            <field name="view_mode">tree,pivot,graph</field>
+            <field name="domain">[('location_id.usage', '=', 'internal'), ('quantity', '>', 0)]</field>
+            <field name="context">{'group_by': ['location_id', 'product_id']}</field>
+        </record>
+
+        <!-- 2. Historial de movimientos completados -->
+        <record id="action_report_stock_moves" model="ir.actions.act_window">
+            <field name="name">Historial de Movimientos</field>
+            <field name="res_model">stock.move.line</field>
+            <field name="view_mode">tree,pivot,graph</field>
+            <field name="domain">[('state', '=', 'done')]</field>
+        </record>
+
+        <!-- 3. Productos con stock bajo mínimo definido -->
+        <record id="action_report_low_stock" model="ir.actions.act_window">
+            <field name="name">Alertas de Stock Mínimo</field>
+            <field name="res_model">product.template</field>
+            <field name="view_mode">tree,form</field>
+            <field name="domain">[('min_stock_level', '>', 0), ('qty_available', '&lt;', 1)]</field>
+        </record>
+
+        <!-- 4. Histórico de ajustes de inventario validados -->
+        <record id="action_report_adjustments_history" model="ir.actions.act_window">
+            <field name="name">Histórico de Ajustes</field>
+            <field name="res_model">stock.inventory.adjustment</field>
+            <field name="view_mode">tree,pivot,graph</field>
+            <field name="domain">[('state', '=', 'done')]</field>
+        </record>
+    </data>
+</odoo>

@@ -19,5 +19,30 @@
             <field name="context">{'group_by': 'location_type'}</field>
             <field name="domain">[('usage', '=', 'internal')]</field>
         </record>
+
+        <!-- Operaciones de almacén: Recepciones, Entregas, Traslados -->
+        <record id="action_custom_receipts" model="ir.actions.act_window">
+            <field name="name">Recepciones</field>
+            <field name="res_model">stock.picking</field>
+            <field name="view_mode">tree,form</field>
+            <field name="domain">[('picking_type_code', '=', 'incoming')]</field>
+            <field name="context">{'default_picking_type_code': 'incoming'}</field>
+        </record>
+
+        <record id="action_custom_deliveries" model="ir.actions.act_window">
+            <field name="name">Entregas</field>
+            <field name="res_model">stock.picking</field>
+            <field name="view_mode">tree,form</field>
+            <field name="domain">[('picking_type_code', '=', 'outgoing')]</field>
+            <field name="context">{'default_picking_type_code': 'outgoing'}</field>
+        </record>
+
+        <record id="action_custom_internal_transfers" model="ir.actions.act_window">
+            <field name="name">Traslados Internos</field>
+            <field name="res_model">stock.picking</field>
+            <field name="view_mode">tree,form</field>
+            <field name="domain">[('picking_type_code', '=', 'internal')]</field>
+            <field name="context">{'default_picking_type_code': 'internal'}</field>
+        </record>
     </data>
 </odoo>

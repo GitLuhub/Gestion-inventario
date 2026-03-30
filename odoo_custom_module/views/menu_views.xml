@@ -37,20 +37,44 @@
                   groups="inventory_custom.group_inventory_manager"/>
 
         <!-- Productos -->
+        <menuitem id="menu_custom_product_list"
+                  name="Todos los Productos"
+                  parent="menu_inventory_custom_products"
+                  action="product.product_template_action_all"
+                  sequence="1"/>
+
+        <menuitem id="menu_custom_product_categories"
+                  name="Categorías"
+                  parent="menu_inventory_custom_products"
+                  action="product.product_category_action_form"
+                  sequence="2"/>
+
         <menuitem id="menu_product_brand"
                   name="Marcas"
                   parent="menu_inventory_custom_products"
                   action="action_product_brand"
-                  sequence="1"/>
+                  sequence="3"/>
 
         <!-- Ubicaciones -->
+        <menuitem id="menu_custom_locations_all"
+                  name="Todas las Ubicaciones"
+                  parent="menu_inventory_custom_locations"
+                  action="stock.action_location_form"
+                  sequence="1"/>
+
+        <menuitem id="menu_custom_warehouses"
+                  name="Almacenes"
+                  parent="menu_inventory_custom_locations"
+                  action="stock.action_warehouse_form"
+                  sequence="2"/>
+
         <menuitem id="menu_stock_location_type"
                   name="Por Tipo"
                   parent="menu_inventory_custom_locations"
                   action="action_stock_location_type"
-                  sequence="1"/>
+                  sequence="3"/>
 
-        <!-- Operaciones -->
+        <!-- Operaciones: Ajustes -->
         <menuitem id="menu_inventory_custom_adjustments_list"
                   name="Ajustes de Inventario"
                   parent="menu_inventory_custom_operations"
@@ -68,6 +92,50 @@
                   parent="menu_inventory_custom_operations"
                   action="action_stock_inventory_quick_count"
                   sequence="3"/>
+
+        <!-- Operaciones: Movimientos de almacén -->
+        <menuitem id="menu_custom_receipts"
+                  name="Recepciones"
+                  parent="menu_inventory_custom_operations"
+                  action="action_custom_receipts"
+                  sequence="10"/>
+
+        <menuitem id="menu_custom_deliveries"
+                  name="Entregas"
+                  parent="menu_inventory_custom_operations"
+                  action="action_custom_deliveries"
+                  sequence="11"/>
+
+        <menuitem id="menu_custom_internal_transfers"
+                  name="Traslados Internos"
+                  parent="menu_inventory_custom_operations"
+                  action="action_custom_internal_transfers"
+                  sequence="12"/>
+
+        <!-- Informes -->
+        <menuitem id="menu_report_stock_location"
+                  name="Stock por Ubicación"
+                  parent="menu_inventory_custom_reports"
+                  action="action_report_stock_by_location"
+                  sequence="1"/>
+
+        <menuitem id="menu_report_stock_moves"
+                  name="Historial de Movimientos"
+                  parent="menu_inventory_custom_reports"
+                  action="action_report_stock_moves"
+                  sequence="2"/>
+
+        <menuitem id="menu_report_low_stock"
+                  name="Alertas de Stock Mínimo"
+                  parent="menu_inventory_custom_reports"
+                  action="action_report_low_stock"
+                  sequence="3"/>
+
+        <menuitem id="menu_report_adjustments_history"
+                  name="Histórico de Ajustes"
+                  parent="menu_inventory_custom_reports"
+                  action="action_report_adjustments_history"
+                  sequence="4"/>
 
         <!-- Configuración -->
         <menuitem id="menu_inventory_custom_reasons"

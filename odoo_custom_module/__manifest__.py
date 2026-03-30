@@ -32,6 +32,7 @@ Features:
         "views/stock_views.xml",
         "views/menu_views.xml",
         "views/inventory_adjustment_views.xml",
+        "views/report_views.xml",
     ],
     "demo": [],
     "installable": True,
