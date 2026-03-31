@@ -22,13 +22,16 @@
             <field name="arch" type="xml">
                 <form>
                     <header>
-                        <button name="action_start" string="Iniciar" type="object" class="btn-primary" invisible="state != 'draft'"/>
-                        <button name="action_validate" string="Validar" type="object" class="btn-success" invisible="state != 'in_progress'"/>
-                        <button name="action_cancel" string="Cancelar" type="object" invisible="state in ('done', 'cancel')"/>
+                        <button name="action_start" string="Iniciar" type="object" class="btn-primary"
+                                attrs="{'invisible': [('state', '!=', 'draft')]}"/>
+                        <button name="action_validate" string="Validar" type="object" class="btn-success"
+                                attrs="{'invisible': [('state', '!=', 'in_progress')]}"/>
+                        <button name="action_cancel" string="Cancelar" type="object"
+                                attrs="{'invisible': [('state', 'in', ['done', 'cancel'])]}"/>
                         <field name="state" widget="statusbar" statusbar_visible="draft,in_progress,done"/>
                     </header>
                     <sheet>
-                        <field name="company_id" invisible="1"/>
+                        <field name="company_id" attrs="{'invisible': [(1, '=', 1)]}"/>
                         <group>
                             <group string="Información General">
                                 <field name="name" readonly="1"/>
