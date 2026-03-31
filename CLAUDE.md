@@ -1667,7 +1667,7 @@ class ProductCreate(BaseModel):
 | Infraestructura | ✅ Listo | Multi-stage Docker, staging, CI cobertura ≥80%, backup + restore test |
 | Observabilidad | ✅ Listo | Prometheus + Grafana + Loki + request_id en todos los logs |
 | Portfolio README | ✅ Listo | Badges, decisiones técnicas, seed demo, RTO/RPO |
-| Repositorio público | 🔲 Pendiente | Requiere `git push` a GitHub con URL real |
+| Repositorio público | 🔲 Pendiente | README URL apunta a `Gitluhub/gestion-inventario` ✅; falta `git remote add` + `git push` |
 
 ---
 
@@ -1675,16 +1675,15 @@ class ProductCreate(BaseModel):
 
 Ordenadas por impacto en portfolio. Ninguna requiere cambios de código.
 
-#### T1 — Publicar en GitHub y corregir URL del README 🔴 ALTA
+#### T1 — Publicar en GitHub 🔴 ALTA
+
+El README ya apunta a `https://github.com/Gitluhub/gestion-inventario` ✅.
+Solo falta conectar el remote y hacer push:
 
 ```bash
-# 1. Crear el repositorio en github.com/<usuario>/gestion-inventario
-# 2. Conectar y publicar:
-git remote add origin https://github.com/<usuario>/gestion-inventario.git
+git remote add origin https://github.com/Gitluhub/gestion-inventario.git
 git push -u origin main
 ```
-
-La URL del README ya fue actualizada a `Gitluhub/gestion-inventario`.
 
 Los badges de CI solo funcionan cuando el repo está publicado y el workflow ha corrido al menos una vez.
 
@@ -1751,26 +1750,21 @@ Si algún servicio no llega al 80%, agregar tests hasta alcanzarlo antes de hace
 
 ---
 
-#### T5 — Agregar `ETL_DB_URL` al Config del ETL 🟡 MEDIA
+#### T5 — Exponer `ETL_DB_URL` en docker-compose y ejecutar migración 🟡 MEDIA
 
-Alembic está configurado y lee `ETL_DB_URL` del entorno, pero `src/config.py` no lo expone
-como atributo de clase. Agregar para que el ETL pueda conectarse a su BD de control:
+La migración inicial ya existe (`alembic/versions/20260330_0001_initial_etl_tracking.py`) ✅.
+`alembic/env.py` lee `ETL_DB_URL` **directamente del entorno** (no de `src/config.py`).
+`src/config.py` tiene su propio campo equivalente llamado `DB_CONNECTION_STRING`.
+Son variables independientes: Alembic no pasa por `config.py`.
 
-```python
-# etl_service/src/config.py
-ETL_DB_URL = os.getenv(
-    'ETL_DB_URL',
-    f'postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@pg_db:5432/etl_control'
-)
-```
+Lo pendiente es exponer `ETL_DB_URL` en `docker-compose.yml` para el servicio `etl_service`
+y ejecutar la migración por primera vez:
 
-Y en `docker-compose.yml` → servicio `etl_service`:
 ```yaml
-environment:
-  ETL_DB_URL: "postgresql://odoo:${POSTGRES_PASSWORD:-odoo_dev_pass}@pg_db:5432/odoo_db"
+# docker-compose.yml → servicio etl_service → environment:
+ETL_DB_URL: "postgresql://odoo:${POSTGRES_PASSWORD:-odoo_dev_pass}@pg_db:5432/odoo_db"
 ```
 
-Ejecutar la migración inicial una vez:
 ```bash
 docker exec inventory_etl_service alembic upgrade head
 ```
@@ -1865,6 +1859,9 @@ Errores encontrados al levantar el stack por primera vez con `docker compose up 
 | RUN-004 | `grafana` | Contenedor no arranca: `mkdirat /etc/grafana/provisioning/dashboards: read-only file system` | Doble montaje conflictivo: `provisioning/` (ro) + `dashboards/` como subdirectorio del primero | Mover JSONs a `docker/grafana/provisioning/dashboards/`; eliminar el segundo volumen en `docker-compose.yml` |
 | RUN-005 | `api_gateway` | `AttributeError: module 'pybreaker' has no attribute 'CircuitBreakerEvent'` | La API pública de pybreaker no expone `CircuitBreakerEvent` | Eliminar `_breaker_listener` y `add_listeners()` — el circuit breaker funciona sin listener |
 | RUN-006 | `frontend` | Error CORS en login: `http://localhost:8000` bloqueado, status null | `NEXT_PUBLIC_API_URL=http://api_gateway:8000` se compila en el build; el navegador no resuelve el hostname interno Docker | Cambiar a `NEXT_PUBLIC_API_URL=http://localhost:8000` en `docker-compose.yml` y reconstruir |
+| RUN-007 | `odoo_app` | Menú "Inventario Avanzado" no aparece en home screen | El volumen `odoo_addons` (named volume) tenía una versión antigua del módulo; los cambios en host no se reflejan automáticamente | Usar `docker cp odoo_custom_module/. inventory_odoo_app:/mnt/extra-addons/inventory_custom/` tras cada cambio, o cambiar a bind mount en docker-compose |
+| RUN-008 | `odoo_app` | `ParseError: External ID not found: inventory_custom.action_stock_inventory_adjustment` al actualizar | `menu_views.xml` cargaba antes que `inventory_adjustment_views.xml` en `__manifest__.py` | Mover `menu_views.xml` al final de la lista `data`, después de todas las vistas que definen acciones |
+| RUN-009 | `odoo_app` | `Field 'company_id' used in domain of location_ids must be present in view` | BUG-009 agregó `company_id` al dominio de `location_ids` pero no lo declaró como campo invisible en la vista de formulario | Agregar `<field name="company_id" invisible="1"/>` dentro de `<sheet>` en `inventory_adjustment_views.xml` |
 
 #### Notas de operación
 
@@ -1872,3 +1869,5 @@ Errores encontrados al levantar el stack por primera vez con `docker compose up 
 - El directorio `frontend/public/` debe existir antes del build o el stage `runner` falla al copiar.
 - El `package-lock.json` debe mantenerse sincronizado con `package.json`. Tras cualquier modificación manual de dependencias, regenerar con `npm install --legacy-peer-deps` antes de hacer commit.
 - Los montajes de volumen Docker no pueden crear subdirectorios dentro de un directorio ya montado como read-only. Toda la estructura de `provisioning/` de Grafana debe estar bajo un solo volumen.
+- El volumen `odoo_addons` es un **named volume** (no bind mount). Los cambios en `odoo_custom_module/` del host NO se reflejan automáticamente en el contenedor. Tras cada cambio al módulo ejecutar: `docker cp odoo_custom_module/. inventory_odoo_app:/mnt/extra-addons/inventory_custom/` seguido de `docker exec inventory_odoo_app /usr/bin/odoo -c /etc/odoo/odoo.conf --db_host=pg_db --db_port=5432 --db_user=odoo --db_password=<PASS> -d odoo_db -u inventory_custom --stop-after-init --no-xmlrpc`.
+- En `menu_views.xml`, los menús que referencian acciones deben cargarse **después** de los archivos XML que definen esas acciones. El orden correcto en `__manifest__.py`: vistas de modelo → `menu_views.xml` al final.
