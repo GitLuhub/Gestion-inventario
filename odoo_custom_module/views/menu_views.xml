@@ -3,6 +3,7 @@
     <data>
         <menuitem id="menu_inventory_custom_root"
                   name="Inventario Avanzado"
+                  web_icon="inventory_custom,static/description/icon.png"
                   sequence="10"
                   groups="inventory_custom.group_inventory_viewer"/>
 
