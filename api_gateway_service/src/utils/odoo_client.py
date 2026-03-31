@@ -29,16 +29,6 @@ _odoo_breaker = pybreaker.CircuitBreaker(
 )
 
 
-def _breaker_listener(event: pybreaker.CircuitBreakerEvent) -> None:
-    """Registra cambios de estado del circuito en el log JSON."""
-    logger.warning(
-        "circuit_breaker_state_change",
-        extra={"breaker": "odoo", "new_state": str(event)},
-    )
-
-
-_odoo_breaker.add_listeners(_breaker_listener)
-
 
 class OdooClient:
     def __init__(self):

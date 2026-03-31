@@ -221,7 +221,7 @@ services:
     env_file:
       - .env
     environment:
-      NEXT_PUBLIC_API_URL: http://api_gateway:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_APP_NAME: "Gestión de Inventario"
       NODE_ENV: production
     ports:
@@ -319,7 +319,6 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     networks:
       - backend-network
     depends_on:

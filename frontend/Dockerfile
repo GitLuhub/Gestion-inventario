@@ -17,7 +17,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json* ./
 
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +59,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 WORKDIR /app
 
-# Archivos estáticos públicos
-COPY --from=builder /app/public ./public
+# Archivos estáticos públicos (directorio puede estar vacío)
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Output standalone de Next.js (incluye todo lo necesario para ejecutar)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
