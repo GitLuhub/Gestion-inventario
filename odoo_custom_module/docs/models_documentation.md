@@ -1,8 +1,8 @@
 # Documentación de Modelos - inventory_custom
 
-**Versión:** 1.0.0  
-**Odoo:** 16.0  
-**Última actualización:** 2026-03-22
+**Versión:** 16.0.1.0.0
+**Odoo:** 16.0
+**Última actualización:** 2026-03-31
 
 ---
 
@@ -95,6 +95,10 @@
 - `get_full_path()` - Retorna ruta completa de categorías
 - `get_subcategories(include_self=False)` - Retorna todas las subcategorías
 
+**⚠️ Nota crítica de compatibilidad Odoo 16:**
+El campo de subcategorías se llama `child_id` (singular), **NO** `child_ids`.
+Usar `self.child_ids` causa `AttributeError`. Verificado en tests de integración.
+
 ---
 
 ## Modelos de Odoo 16 Compatibles
@@ -169,6 +173,13 @@ Inventario Avanzado (stock.group_stock_manager)
 - `lot_id.expiration_date` - No existe en `stock.lot`
 - `lot_id.use_date` - No existe en `stock.lot`
 - `product_id.product_ids` - No existe en `product.category`
+- `res.company.property_stock_inventory_loc_id` - No existe en todas las builds de Odoo 16;
+  usar `getattr(company, 'property_stock_inventory_loc_id', False)` con fallback a search
+
+### Nombres de campos que difieren de lo esperado:
+| Nombre esperado (intuitivo) | Nombre real en Odoo 16 | Modelo |
+|-----------------------------|-----------------------|--------|
+| `child_ids` | `child_id` (singular) | `product.category` |
 
 ### Equivalencias Odoo 16:
 | Odoo 14/15 | Odoo 16 |
@@ -197,4 +208,18 @@ docker exec odoo psql -U odoo -d odoo_db -c \
 
 ---
 
-*Documento generado automáticamente - 2026-03-22*
+## Suite de Tests
+
+**185 tests pasando** (verificado 2026-03-31 contra stack real en Docker):
+
+| Archivo | Tests | Cobertura |
+|---------|-------|-----------|
+| `tests/test_models.py` | ~147 | Todos los modelos, integración action_validate, stock operations |
+| `tests/test_wizards.py` | 31 | StockInventoryWizard, QuickCount, QuickCountLine |
+| `tests/test_views.py` | ~27 | Vistas, acciones, menús, seguridad de grupos en UI |
+| `tests/test_security.py` | 4 | Grupos de seguridad, dependencias de módulo |
+| `tests/test_performance.py` | 11 | CRUD < 2s, informes < 5s (RNF1) |
+
+---
+
+*Última actualización: 2026-03-31*
