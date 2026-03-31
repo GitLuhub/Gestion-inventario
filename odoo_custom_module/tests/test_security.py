@@ -37,10 +37,11 @@ class TestModuleDependencies(TransactionCase):
         self.Module = self.env['ir.module.module']
 
     def test_module_installed(self):
-        """Test que el módulo está instalado"""
+        """Test que el módulo está instalado (o en proceso de actualización)."""
         module = self.Module.search([('name', '=', 'inventory_custom')])
         self.assertTrue(module)
-        self.assertEqual(module.state, 'installed')
+        self.assertIn(module.state, ('installed', 'to upgrade'),
+                      'El módulo debe estar instalado o actualizándose')
 
     def test_dependencies_installed(self):
         """Test que las dependencias están instaladas"""

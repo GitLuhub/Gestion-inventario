@@ -48,8 +48,8 @@ class ProductCategory(models.Model):
     def get_subcategories(self, include_self=False):
         """Retorna todas las subcategorías."""
         self.ensure_one()
-        categories = self.child_ids
-        for child in self.child_ids:
+        categories = self.child_id
+        for child in self.child_id:
             categories |= child.get_subcategories()
 
         if include_self:

@@ -202,12 +202,11 @@ class StockInventoryAdjustment(models.Model):
 
     def _get_inventory_location(self):
         """Retorna la ubicación de inventario de la compañía actual."""
-        inventory_location = (
-            self.env.company.property_stock_inventory_loc_id
-            or self.env['stock.location'].search(
-                [('usage', '=', 'inventory'), ('company_id', '=', self.env.company.id)],
-                limit=1,
-            )
+        inventory_location = getattr(
+            self.env.company, 'property_stock_inventory_loc_id', False
+        ) or self.env['stock.location'].search(
+            [('usage', '=', 'inventory'), ('company_id', '=', self.env.company.id)],
+            limit=1,
         )
         if not inventory_location:
             raise UserError(_(
