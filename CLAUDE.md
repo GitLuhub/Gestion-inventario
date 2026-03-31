@@ -1653,8 +1653,8 @@ class ProductCreate(BaseModel):
 ## 15. Estado Operacional y Tareas Pendientes
 
 > Esta sección documenta el estado real del proyecto tras completar todas las fases
-> de código (A–J). Las tareas pendientes son **operacionales** — no requieren cambios
-> en el código, sino acciones externas (GitHub, despliegue, capturas de pantalla).
+> de código (A–J) y resolver los bugs de runtime encontrados en el primer deploy.
+> Ver §15.6 para el catálogo completo de bugs de runtime resueltos.
 
 ### 15.1 Estado del Proyecto
 
@@ -1850,3 +1850,25 @@ scripts/
 docker-compose.staging.yml        # Override staging: monitoreo activo, 1 réplica
 README.md                         # Badges, screenshots, decisiones técnicas, RTO/RPO
 ```
+
+---
+
+### 15.6 Bugs Resueltos en Runtime (post-deploy 2026-03-30)
+
+Errores encontrados al levantar el stack por primera vez con `docker compose up -d --build`.
+
+| ID | Servicio | Síntoma | Causa | Solución |
+|----|---------|---------|-------|---------|
+| RUN-001 | `frontend` | `npm ci` falla en build con "Missing: p-locate@4.1.0 from lock file" | `package-lock.json` desincronizado con `package.json` | Ejecutar `npm install --legacy-peer-deps` en `frontend/` para regenerar el lockfile |
+| RUN-002 | `frontend` | Build falla con `/app/public: not found` en stage runner | Directorio `public/` no existía en el repo | Crear `frontend/public/.gitkeep`; cambiar `COPY public` a `--chown=nextjs:nodejs` |
+| RUN-003 | `frontend` | `npm ci` falla con peer dependency conflicts | Versiones de devDependencies con conflictos entre sí | Agregar `--legacy-peer-deps` a `RUN npm ci` en `Dockerfile` stage deps |
+| RUN-004 | `grafana` | Contenedor no arranca: `mkdirat /etc/grafana/provisioning/dashboards: read-only file system` | Doble montaje conflictivo: `provisioning/` (ro) + `dashboards/` como subdirectorio del primero | Mover JSONs a `docker/grafana/provisioning/dashboards/`; eliminar el segundo volumen en `docker-compose.yml` |
+| RUN-005 | `api_gateway` | `AttributeError: module 'pybreaker' has no attribute 'CircuitBreakerEvent'` | La API pública de pybreaker no expone `CircuitBreakerEvent` | Eliminar `_breaker_listener` y `add_listeners()` — el circuit breaker funciona sin listener |
+| RUN-006 | `frontend` | Error CORS en login: `http://localhost:8000` bloqueado, status null | `NEXT_PUBLIC_API_URL=http://api_gateway:8000` se compila en el build; el navegador no resuelve el hostname interno Docker | Cambiar a `NEXT_PUBLIC_API_URL=http://localhost:8000` en `docker-compose.yml` y reconstruir |
+
+#### Notas de operación
+
+- `NEXT_PUBLIC_*` en Next.js se bake en tiempo de build, no de runtime. Cualquier cambio requiere `docker compose up -d --build frontend`.
+- El directorio `frontend/public/` debe existir antes del build o el stage `runner` falla al copiar.
+- El `package-lock.json` debe mantenerse sincronizado con `package.json`. Tras cualquier modificación manual de dependencias, regenerar con `npm install --legacy-peer-deps` antes de hacer commit.
+- Los montajes de volumen Docker no pueden crear subdirectorios dentro de un directorio ya montado como read-only. Toda la estructura de `provisioning/` de Grafana debe estar bajo un solo volumen.
