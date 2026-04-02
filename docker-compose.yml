@@ -142,6 +142,7 @@ services:
       ETL_DATA_PATH: /app/data
       ETL_LOG_LEVEL: INFO
       ETL_SCHEDULE_CRON: "*/15 * * * *"
+      ETL_DB_URL: "postgresql://odoo:${POSTGRES_PASSWORD:-odoo_dev_pass}@pg_db:5432/${POSTGRES_DB:-odoo_db}"
     volumes:
       - etl_data:/app/data
     networks:
