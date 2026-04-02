@@ -140,7 +140,9 @@ jobs:
         with:
           context: ./etl_service
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-etl:latest
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-etl:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-etl:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -149,7 +151,9 @@ jobs:
         with:
           context: ./api_gateway_service
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-api:latest
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -158,6 +162,8 @@ jobs:
         with:
           context: ./frontend
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-frontend:latest
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
