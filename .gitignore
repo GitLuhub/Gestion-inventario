@@ -178,4 +178,10 @@ dmypy.json
 .Spotlight-V100
 .Trashes
 
+# ===================================================================
+# Documentos internos de desarrollo (no para el repositorio público)
+# ===================================================================
+CLAUDE.md
+CHECKLIST_PROYECTO_PROFESIONAL.md
+
 

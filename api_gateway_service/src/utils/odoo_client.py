@@ -143,8 +143,12 @@ class OdooClient:
             return False
 
 
-odoo_client = OdooClient()
+_odoo_client: Optional[OdooClient] = None
 
 
 def get_odoo_client() -> OdooClient:
-    return odoo_client
+    """Lazy singleton — se conecta en la primera llamada, no al importar el módulo."""
+    global _odoo_client
+    if _odoo_client is None:
+        _odoo_client = OdooClient()
+    return _odoo_client
