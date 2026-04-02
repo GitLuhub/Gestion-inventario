@@ -106,6 +106,9 @@ frontend/out/
 frontend/node_modules/
 frontend/.turbo/
 frontend/build/
+frontend/coverage/
+frontend/tsconfig.tsbuildinfo
+**/tsconfig.tsbuildinfo
 
 # React
 frontend/.cache/
