@@ -129,11 +129,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
 
       - name: Build and push ETL Service
         uses: docker/build-push-action@v5
@@ -141,8 +138,8 @@ jobs:
           context: ./etl_service
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-etl:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-etl:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}-etl:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}-etl:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -152,8 +149,8 @@ jobs:
           context: ./api_gateway_service
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}-api:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}-api:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -163,7 +160,7 @@ jobs:
           context: ./frontend
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}-frontend:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}-frontend:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
