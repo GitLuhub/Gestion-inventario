@@ -93,19 +93,15 @@ class OdooClient:
         order: str = None,
     ) -> List[Dict]:
         domain = domain or []
-        fields = fields or []
-
+        # Los kwargs deben pasarse como **kwargs a _execute, NO como dict posicional.
+        # execute_kw(model, method, args, kwargs): si el dict se pasa en args lo trata
+        # como campo, causando "Invalid field 'fields' on model '...'"
+        kw: dict = {'limit': limit, 'offset': offset}
         if fields:
-            result = self._execute(
-                model, 'search_read',
-                domain,
-                {'fields': fields, 'limit': limit, 'offset': offset, 'order': order},
-            )
-        else:
-            ids = self._execute(model, 'search', domain, {'limit': limit, 'offset': offset})
-            result = self._execute(model, 'read', ids) if ids else []
-
-        return result
+            kw['fields'] = fields
+        if order:
+            kw['order'] = order
+        return self._execute(model, 'search_read', domain, **kw)
 
     def create(self, model: str, values: Dict[str, Any]) -> int:
         return self._execute(model, 'create', values)
@@ -118,18 +114,22 @@ class OdooClient:
 
     def search_count(self, model: str, domain: List = None) -> int:
         domain = domain or []
-        ids = self._execute(model, 'search', domain)
-        return len(ids) if ids else 0
+        return self._execute(model, 'search_count', domain)
 
     def search(self, model: str, domain: List = None, limit: int = None) -> List[int]:
         domain = domain or []
-        return self._execute(model, 'search', domain, {'limit': limit})
+        kw: dict = {}
+        if limit is not None:
+            kw['limit'] = limit
+        return self._execute(model, 'search', domain, **kw)
 
     def read(self, model: str, ids: List[int], fields: List[str] = None) -> List[Dict]:
-        fields = fields or []
         if not ids:
             return []
-        return self._execute(model, 'read', ids, {'fields': fields})
+        kw: dict = {}
+        if fields:
+            kw['fields'] = fields
+        return self._execute(model, 'read', ids, **kw)
 
     def call_method(self, model: str, method: str, *args, **kwargs) -> Any:
         return self._execute(model, method, args, kwargs)
