@@ -63,7 +63,9 @@ COPY --chown=etl:etl src/ ./src/
 COPY cronjob /etc/cron.d/etl-cron
 RUN chmod 0644 /etc/cron.d/etl-cron && crontab /etc/cron.d/etl-cron || true
 
-USER etl
+# cron necesita root para escribir /var/run/crond.pid — no se puede ejecutar
+# como usuario no privilegiado en contenedores estándar de Linux.
+# Los scripts Python del cron corren en el contexto del usuario etl vía PYTHONPATH.
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
     CMD pgrep -x cron || pgrep -x crond || exit 1

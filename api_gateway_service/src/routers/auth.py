@@ -122,7 +122,7 @@ async def refresh_token_endpoint(
         )
 
     try:
-        payload = verify_refresh_token(cookie_token)
+        payload = await verify_refresh_token(cookie_token)
 
         username = payload.get("sub")
         user_id = payload.get("user_id")

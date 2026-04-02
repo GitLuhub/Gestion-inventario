@@ -14,24 +14,29 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/products", tags=["Productos"])
 
 
+def _odoo_str(value) -> str | None:
+    """Odoo devuelve False en campos Char/Text vacíos — convertir a None."""
+    return value if isinstance(value, str) else None
+
+
 def _map_product_to_response(product: dict) -> dict:
     return {
         'id': product.get('id'),
         'name': product.get('name'),
-        'default_code': product.get('default_code'),
-        'description': product.get('description'),
+        'default_code': _odoo_str(product.get('default_code')),
+        'description': _odoo_str(product.get('description')),
         'type': product.get('type', 'product'),
         'list_price': product.get('list_price', 0),
         'standard_price': product.get('standard_price', 0),
         'weight': product.get('weight', 0),
-        'barcode': product.get('barcode'),
+        'barcode': _odoo_str(product.get('barcode')),
         'active': product.get('active', True),
         'categ_id': product.get('categ_id', [0])[0] if product.get('categ_id') else None,
         'qty_available': product.get('qty_available', 0),
         'virtual_available': product.get('virtual_available', 0),
         'categ_name': product.get('categ_id', [''])[1] if product.get('categ_id') else None,
-        'create_date': product.get('create_date'),
-        'write_date': product.get('write_date'),
+        'create_date': _odoo_str(product.get('create_date')),
+        'write_date': _odoo_str(product.get('write_date')),
     }
 
 

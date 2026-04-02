@@ -22,34 +22,30 @@ async def create_adjustment(
     odoo: OdooClient = Depends(get_odoo_client),
 ):
     try:
+        location_ids = list(set([line.location_id for line in adjustment.lines]))
         inventory_vals = {
             'name': adjustment.name,
-            'state': 'draft',
             'adjustment_type': 'partial',
+            'location_ids': [(6, 0, location_ids)],
         }
-        
-        location_ids = list(set([line.location_id for line in adjustment.lines]))
-        inventory_vals['location_ids'] = [(6, 0, location_ids)]
-        
-        inventory_id = odoo.create('stock.inventory', inventory_vals)
-        
-        odoo.call_method('stock.inventory', 'action_start', [inventory_id])
-        
+
+        inventory_id = odoo.create('stock.inventory.adjustment', inventory_vals)
+        odoo.call_method('stock.inventory.adjustment', 'action_start', [inventory_id])
+
         for line in adjustment.lines:
             line_vals = {
-                'inventory_id': inventory_id,
+                'adjustment_id': inventory_id,
                 'product_id': line.product_id,
                 'location_id': line.location_id,
-                'product_qty': line.quantity,
+                'expected_qty': line.quantity,
                 'adjustment_reason': line.adjustment_reason,
-                'notes': line.notes,
             }
-            odoo.create('stock.inventory.line', line_vals)
-        
-        odoo.call_method('stock.inventory', 'action_validate', [inventory_id])
-        
+            odoo.create('stock.inventory.adjustment.line', line_vals)
+
+        odoo.call_method('stock.inventory.adjustment', 'action_validate', [inventory_id])
+
         logger.info(f"Ajuste de inventario creado: {inventory_id}")
-        
+
         return InventoryAdjustmentResponse(
             id=inventory_id,
             name=adjustment.name,
@@ -58,7 +54,7 @@ async def create_adjustment(
             adjustment_type='partial',
             line_count=len(adjustment.lines),
         )
-        
+
     except Exception as e:
         logger.error(f"Error al crear ajuste: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -72,32 +68,31 @@ async def list_adjustments(
     odoo: OdooClient = Depends(get_odoo_client),
 ):
     offset = (page - 1) * page_size
-    
+
     inventories = odoo.search_read(
-        'stock.inventory',
+        'stock.inventory.adjustment',
         domain=[],
-        fields=['id', 'name', 'date', 'state', 'adjustment_type'],
+        fields=['id', 'name', 'write_date', 'state', 'adjustment_type'],
         limit=page_size,
         offset=offset,
-        order='date DESC'
+        order='write_date DESC',
     )
-    
+
     results = []
     for inv in inventories:
         line_count = odoo.search_count(
-            'stock.inventory.line',
-            [('inventory_id', '=', inv['id'])]
+            'stock.inventory.adjustment.line',
+            [('adjustment_id', '=', inv['id'])],
         )
-        
         results.append(InventoryAdjustmentResponse(
             id=inv['id'],
             name=inv['name'],
-            date=inv.get('date', datetime.now()),
+            date=inv.get('write_date', datetime.now()),
             state=inv['state'],
             adjustment_type=inv.get('adjustment_type', 'partial'),
             line_count=line_count,
         ))
-    
+
     return results
 
 
