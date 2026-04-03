@@ -140,6 +140,7 @@ docs/_build/
 contexto_proyecto.md
 resumen_proyecto.md
 guia_solucion_problemas.md
+manual_etl_service.md
 Archivos proyecto Gestion-inventario
 *.md~
 *.tmp
@@ -186,5 +187,6 @@ dmypy.json
 # ===================================================================
 CLAUDE.md
 CHECKLIST_PROYECTO_PROFESIONAL.md
+MANUAL_CICD_GCP.md
 
 
