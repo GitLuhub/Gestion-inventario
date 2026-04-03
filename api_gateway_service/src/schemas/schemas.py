@@ -171,6 +171,30 @@ class DashboardStats(BaseModel):
     pending_operations: int = Field(..., example=2)
 
 
+class LowStockProduct(BaseModel):
+    id: int = Field(..., example=42)
+    name: str = Field(..., example="Laptop HP EliteBook")
+    default_code: Optional[str] = Field(None, example="LAP-001")
+    qty_available: float = Field(..., example=3.0)
+    min_stock_level: float = Field(..., example=10.0)
+
+
+class CategoryStats(BaseModel):
+    id: int = Field(..., example=5)
+    name: str = Field(..., example="Electrónica")
+    product_count: int = Field(..., example=45)
+    total_value: float = Field(..., example=23500.00)
+
+
+class ReportSummaryResponse(BaseModel):
+    total_products: int = Field(..., example=150)
+    total_locations: int = Field(..., example=12)
+    low_stock_count: int = Field(..., example=5)
+    out_of_stock_count: int = Field(..., example=2)
+    total_stock_value: float = Field(..., example=125000.00)
+    top_categories: List[CategoryStats]
+
+
 class HealthResponse(BaseModel):
     status: str = Field(..., example="healthy")
     version: str = Field(..., example="1.0.0")

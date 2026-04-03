@@ -1,9 +1,31 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardBody, StatCard } from '@/components/ui/Card'
-import { CubeIcon, MapPinIcon, ExclamationTriangleIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline'
+import { CubeIcon, MapPinIcon, ExclamationTriangleIcon, CurrencyDollarIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline'
+import { useInventoryStats, useInventoryAdjustments } from '@/hooks'
+import { useProducts } from '@/hooks'
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const { stats, isLoading: statsLoading } = useInventoryStats()
+  const { products, isLoading: productsLoading } = useProducts({ page: 1, page_size: 5 })
+  const { adjustments, isLoading: adjLoading } = useInventoryAdjustments(1, 5)
+
+  const formatValue = (v: number) =>
+    v >= 1_000_000
+      ? `$${(v / 1_000_000).toFixed(1)}M`
+      : v >= 1_000
+      ? `$${(v / 1_000).toFixed(1)}K`
+      : `$${v.toLocaleString('es-CO')}`
+
+  const stateLabel: Record<string, string> = {
+    draft: 'Borrador',
+    in_progress: 'En Progreso',
+    done: 'Completado',
+    cancel: 'Cancelado',
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -14,26 +36,23 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Total Productos"
-          value="1,234"
+          value={statsLoading ? '…' : (stats?.total_products ?? 0).toLocaleString()}
           icon={<CubeIcon className="w-8 h-8 text-primary-600" />}
-          trend={{ value: 12, isPositive: true }}
         />
         <StatCard
           title="Ubicaciones"
-          value="56"
+          value={statsLoading ? '…' : (stats?.total_locations ?? 0).toLocaleString()}
           icon={<MapPinIcon className="w-8 h-8 text-success-600" />}
-          trend={{ value: 5, isPositive: true }}
         />
         <StatCard
-          title="Stock Bajo"
-          value="23"
+          title="Stock Bajo Mínimo"
+          value={statsLoading ? '…' : (stats?.low_stock_products ?? 0).toLocaleString()}
           icon={<ExclamationTriangleIcon className="w-8 h-8 text-warning-600" />}
         />
         <StatCard
-          title="Valor Total"
-          value="$125,000,000"
+          title="Valor Total Stock"
+          value={statsLoading ? '…' : formatValue(stats?.total_stock_value ?? 0)}
           icon={<CurrencyDollarIcon className="w-8 h-8 text-primary-600" />}
-          trend={{ value: 8, isPositive: true }}
         />
       </div>
 
@@ -43,50 +62,78 @@ export default function DashboardPage() {
             <h3 className="text-lg font-semibold text-gray-900">Productos Recientes</h3>
           </CardHeader>
           <CardBody className="p-0">
-            <div className="divide-y divide-gray-200">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center">
-                      <CubeIcon className="w-5 h-5 text-primary-600" />
+            {productsLoading ? (
+              <div className="px-6 py-8 text-center text-sm text-gray-400">Cargando…</div>
+            ) : products.length === 0 ? (
+              <div className="px-6 py-8 text-center text-sm text-gray-400">Sin productos</div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {products.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => router.push(`/dashboard/products/${p.id}`)}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center">
+                        <CubeIcon className="w-5 h-5 text-primary-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                        <p className="text-sm text-gray-500">{p.default_code || 'Sin código'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Producto {i}</p>
-                      <p className="text-sm text-gray-500">SKU-00{i}</p>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-900">
+                        {p.qty_available} uds
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        ${p.list_price.toLocaleString('es-CO')}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">100 unidades</p>
-                    <p className="text-sm text-gray-500">$50,000</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardBody>
         </Card>
 
         <Card>
           <CardHeader>
-            <h3 className="text-lg font-semibold text-gray-900">Actividad Reciente</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Ajustes Recientes</h3>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <ClipboardDocumentListIcon className="w-4 h-4" />
+                <span>{statsLoading ? '…' : stats?.pending_operations ?? 0} pendientes</span>
+              </div>
+            </div>
           </CardHeader>
           <CardBody className="p-0">
-            <div className="divide-y divide-gray-200">
-              {[
-                { action: 'Recepción', user: 'Carlos M.', time: 'Hace 5 min' },
-                { action: 'Ajuste de inventario', user: 'Ana L.', time: 'Hace 15 min' },
-                { action: 'Entrega', user: 'Juan P.', time: 'Hace 30 min' },
-                { action: 'Creación producto', user: 'María G.', time: 'Hace 1 hora' },
-                { action: 'Transferencia', user: 'Pedro R.', time: 'Hace 2 horas' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{item.action}</p>
-                    <p className="text-sm text-gray-500">por {item.user}</p>
+            {adjLoading ? (
+              <div className="px-6 py-8 text-center text-sm text-gray-400">Cargando…</div>
+            ) : adjustments.length === 0 ? (
+              <div className="px-6 py-8 text-center text-sm text-gray-400">Sin ajustes registrados</div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {adjustments.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 font-mono">{a.name}</p>
+                      <p className="text-sm text-gray-500">{a.adjustment_type} · {a.line_count} líneas</p>
+                    </div>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      a.state === 'done'
+                        ? 'bg-success-100 text-success-700'
+                        : a.state === 'in_progress'
+                        ? 'bg-primary-100 text-primary-700'
+                        : 'bg-warning-100 text-warning-700'
+                    }`}>
+                      {stateLabel[a.state] ?? a.state}
+                    </span>
                   </div>
-                  <p className="text-sm text-gray-400">{item.time}</p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardBody>
         </Card>
       </div>

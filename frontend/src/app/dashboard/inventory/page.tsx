@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Table, Pagination } from '@/components/ui/Table'
+import { Table } from '@/components/ui/Table'
 import { Card, CardBody, CardHeader, StatCard } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -11,52 +11,54 @@ import { StockQuant, InventoryAdjustment } from '@/types'
 import { CubeIcon, MapPinIcon, ArrowsUpDownIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline'
 import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
-
-const mockQuants: StockQuant[] = [
-  { id: 1, product_id: 1, product_name: 'Portátil HP ProBook 450', location_id: 1, location_name: 'Almacén Principal / Estante A1', quantity: 15, reserved_quantity: 2 },
-  { id: 2, product_id: 2, product_name: 'Monitor Dell 27"', location_id: 1, location_name: 'Almacén Principal / Estante B2', quantity: 8, reserved_quantity: 1 },
-  { id: 3, product_id: 3, product_name: 'Teclado Mecánico RGB', location_id: 2, location_name: 'Almacén Secundario / Estante C1', quantity: 45, reserved_quantity: 0 },
-]
-
-const mockAdjustments: InventoryAdjustment[] = [
-  { id: 1, name: 'INV-2024-001', date: '2024-01-15', state: 'done', adjustment_type: 'Ajuste', line_count: 12 },
-  { id: 2, name: 'INV-2024-002', date: '2024-01-18', state: 'done', adjustment_type: 'Recuento', line_count: 8 },
-  { id: 3, name: 'INV-2024-003', date: '2024-01-20', state: 'draft', adjustment_type: 'Ajuste', line_count: 5 },
-]
+import { useInventoryStats, useInventoryQuants, useInventoryAdjustments } from '@/hooks'
+import { inventoryService } from '@/services/inventory'
 
 type AdjustmentFormData = {
   name: string
   adjustment_type: string
-  location_id: number
 }
 
 export default function InventoryPage() {
-  const [quants, setQuants] = useState<StockQuant[]>(mockQuants)
-  const [adjustments, setAdjustments] = useState<InventoryAdjustment[]>(mockAdjustments)
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const { stats } = useInventoryStats()
+  const { quants, isLoading: quantsLoading } = useInventoryQuants()
+  const { adjustments, isLoading: adjLoading, mutate: mutateAdj } = useInventoryAdjustments(1, 20)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<AdjustmentFormData>()
 
-  const filteredQuants = quants.filter(q => 
+  const filteredQuants = quants.filter(q =>
     q.product_name.toLowerCase().includes(search.toLowerCase()) ||
     q.location_name.toLowerCase().includes(search.toLowerCase())
   )
 
-  const onSubmitAdjustment = (data: AdjustmentFormData) => {
-    const newAdjustment: InventoryAdjustment = {
-      id: adjustments.length + 1,
-      name: `INV-2024-${String(adjustments.length + 4).padStart(3, '0')}`,
-      date: new Date().toISOString().split('T')[0],
-      state: 'draft',
-      adjustment_type: data.adjustment_type,
-      line_count: 0,
+  const totalStock = quants.reduce((sum, q) => sum + q.quantity, 0)
+  const totalReserved = quants.reduce((sum, q) => sum + q.reserved_quantity, 0)
+  const pendingAdj = adjustments.filter(a => a.state === 'draft' || a.state === 'in_progress').length
+
+  const onSubmitAdjustment = async (data: AdjustmentFormData) => {
+    setIsSubmitting(true)
+    try {
+      await inventoryService.createAdjustment({ name: data.name, adjustment_type: data.adjustment_type } as any)
+      await mutateAdj()
+      toast.success('Ajuste creado correctamente')
+      setIsModalOpen(false)
+      reset()
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al crear el ajuste')
+    } finally {
+      setIsSubmitting(false)
     }
-    setAdjustments([newAdjustment, ...adjustments])
-    toast.success('Ajuste creado correctamente')
-    setIsModalOpen(false)
-    reset()
+  }
+
+  const stateLabel: Record<string, string> = {
+    draft: 'Borrador',
+    in_progress: 'En Progreso',
+    done: 'Completado',
+    cancel: 'Cancelado',
   }
 
   const quantColumns = [
@@ -94,6 +96,16 @@ export default function InventoryPage() {
         </div>
       ),
     },
+    {
+      key: 'lot',
+      header: 'Lote',
+      render: (item: StockQuant) =>
+        item.lot_name ? (
+          <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">{item.lot_name}</span>
+        ) : (
+          <span className="text-gray-300 text-xs">—</span>
+        ),
+    },
   ]
 
   const adjustmentColumns = [
@@ -116,17 +128,21 @@ export default function InventoryPage() {
     {
       key: 'date',
       header: 'Fecha',
+      render: (item: InventoryAdjustment) =>
+        new Date(item.date).toLocaleDateString('es-CO'),
     },
     {
       key: 'state',
       header: 'Estado',
       render: (item: InventoryAdjustment) => (
         <span className={`px-2 py-1 text-xs rounded-full ${
-          item.state === 'done' 
-            ? 'bg-success-100 text-success-700' 
+          item.state === 'done'
+            ? 'bg-success-100 text-success-700'
+            : item.state === 'in_progress'
+            ? 'bg-primary-100 text-primary-700'
             : 'bg-warning-100 text-warning-700'
         }`}>
-          {item.state === 'done' ? 'Completado' : 'Borrador'}
+          {stateLabel[item.state] ?? item.state}
         </span>
       ),
     },
@@ -152,22 +168,22 @@ export default function InventoryPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard
           title="Total Stock"
-          value="1,234"
+          value={quantsLoading ? '…' : totalStock.toLocaleString()}
           icon={<CubeIcon className="w-6 h-6 text-primary-600" />}
         />
         <StatCard
           title="Ubicaciones Activas"
-          value="23"
+          value={stats?.total_locations?.toLocaleString() ?? '…'}
           icon={<MapPinIcon className="w-6 h-6 text-success-600" />}
         />
         <StatCard
-          title="Reservas"
-          value="45"
+          title="Unidades Reservadas"
+          value={quantsLoading ? '…' : totalReserved.toLocaleString()}
           icon={<ArrowsUpDownIcon className="w-6 h-6 text-warning-600" />}
         />
         <StatCard
           title="Ajustes Pendientes"
-          value={adjustments.filter(a => a.state === 'draft').length.toString()}
+          value={adjLoading ? '…' : pendingAdj.toString()}
           icon={<ClipboardDocumentListIcon className="w-6 h-6 text-danger-600" />}
         />
       </div>
@@ -189,11 +205,11 @@ export default function InventoryPage() {
               <MagnifyingGlassIcon className="w-5 h-5" />
             </Button>
           </div>
-
           <Table
             data={filteredQuants}
             columns={quantColumns}
             keyExtractor={(item) => item.id}
+            isLoading={quantsLoading}
             emptyMessage="No hay existencias que mostrar"
           />
         </CardBody>
@@ -201,28 +217,29 @@ export default function InventoryPage() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-lg font-semibold text-gray-900">Ajustes Recientes</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Ajustes de Inventario</h3>
         </CardHeader>
         <CardBody className="p-0">
           <Table
             data={adjustments}
             columns={adjustmentColumns}
             keyExtractor={(item) => item.id}
-            emptyMessage="No hay ajustes recientes"
+            isLoading={adjLoading}
+            emptyMessage="No hay ajustes registrados"
           />
         </CardBody>
       </Card>
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); reset() }}
         title="Nuevo Ajuste de Inventario"
         footer={
           <div className="flex justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+            <Button variant="secondary" onClick={() => { setIsModalOpen(false); reset() }}>
               Cancelar
             </Button>
-            <Button type="submit" form="adjustment-form">
+            <Button type="submit" form="adjustment-form" isLoading={isSubmitting}>
               Crear Ajuste
             </Button>
           </div>
@@ -241,9 +258,10 @@ export default function InventoryPage() {
               {...register('adjustment_type', { required: true })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="Ajuste">Ajuste</option>
-              <option value="Recuento">Recuento</option>
-              <option value="Corrección">Corrección</option>
+              <option value="partial">Parcial</option>
+              <option value="cyclic">Cíclico</option>
+              <option value="full">Completo</option>
+              <option value="correction">Corrección</option>
             </select>
           </div>
         </form>
