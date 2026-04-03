@@ -162,8 +162,8 @@ El módulo extiende Odoo 16 con:
 ### 1. Clonar y configurar
 
 ```bash
-git clone https://github.com/Gitluhub/gestion-inventario.git
-cd gestion-inventario
+git clone https://github.com/GitLuhub/Gestion-inventario.git
+cd Gestion-inventario
 cp .env.example .env
 ```
 
