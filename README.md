@@ -213,15 +213,16 @@ docker compose up -d --build odoo_app
 docker compose logs -f api_gateway
 
 # Ejecutar tests del módulo Odoo
-docker exec inventory_odoo_app odoo-bin \
-  -d odoo_db --test-enable --stop-after-init \
+docker exec inventory_odoo_app /usr/bin/odoo \
+  -c /etc/odoo/odoo.conf -d odoo_db \
+  --test-enable --stop-after-init --no-xmlrpc --workers=0 \
   --test-tags /inventory_custom
 
 # Tests de rendimiento
-docker exec inventory_odoo_app odoo-bin \
-  -d odoo_db \
+docker exec inventory_odoo_app /usr/bin/odoo \
+  -c /etc/odoo/odoo.conf -d odoo_db \
   --test-tags /inventory_custom:TestCRUDPerformance \
-  --stop-after-init
+  --stop-after-init --no-xmlrpc --workers=0
 
 # Tests API Gateway
 cd api_gateway_service && pytest tests/ -v --cov=src --cov-report=term
@@ -301,14 +302,13 @@ Ejecuta en cada push y PR:
 
 ### CD Pipeline (`.github/workflows/cd.yml`)
 
-- `develop` → deploy automático a staging
-- `main` → deploy a producción vía SSH
+- `main` → deploy a producción vía SSH (manual en la VM actual)
 
-Secrets necesarios en GitHub → Settings → Actions:
+Para habilitar el deploy automático, configurar en GitHub → Settings → Actions → Secrets:
 ```
-STAGING_HOST, STAGING_USER, STAGING_SSH_KEY
-PRODUCTION_HOST, PRODUCTION_USER, PRODUCTION_SSH_KEY
-GRAFANA_ADMIN_PASSWORD
+GCP_HOST          # IP pública de la VM
+GCP_USER          # usuario SSH
+GCP_SSH_KEY       # clave privada SSH (sin passphrase)
 ```
 
 ---
