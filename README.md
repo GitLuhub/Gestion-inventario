@@ -20,7 +20,7 @@ Sistema de gestión de inventario empresarial construido sobre Odoo 16.0 LTS, co
 
 | Dashboard de Inventario | Ajustes de Stock | Grafana Metrics |
 |-------------------------|------------------|-----------------|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Ajustes](docs/screenshots/adjustments.png) | ![Grafana](docs/screenshots/grafana.png) |
+| ![Dashboard](docs/screenshots/Dashboard.png) | ![Ajustes](docs/screenshots/stock.png) | ![Grafana](docs/screenshots/Grafana.png) |
 
 ---
 
