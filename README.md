@@ -11,6 +11,8 @@
 
 Sistema de gestión de inventario empresarial construido sobre Odoo 16.0 LTS, con pipeline ETL, API Gateway JWT y dashboard en Next.js. Diseñado para cumplir estándares de producción: observabilidad estructurada, seguridad por capas y CI/CD automatizado.
 
+**🌐 Demo en vivo:** [https://odoo-inventario.duckdns.org](https://odoo-inventario.duckdns.org) — usuario: `admin` / contraseña: `admin`
+
 ---
 
 ## Capturas de Pantalla
@@ -193,13 +195,15 @@ bash scripts/seed_demo.sh
 
 ### 5. Acceder
 
-| Servicio | URL | Credenciales |
-|----------|-----|--------------|
-| Frontend | http://localhost:3000 | admin / admin |
-| Odoo | http://localhost:8069 | admin / admin |
-| API Swagger | http://localhost:8000/docs | — |
-| Grafana | http://localhost:3001 | admin / ver `.env` |
-| Prometheus | http://localhost:9090 | — |
+| Servicio | URL local | URL producción |
+|----------|-----------|----------------|
+| Frontend | http://localhost:3000 | https://odoo-inventario.duckdns.org |
+| Odoo | http://localhost:8069 | https://odoo-inventario.duckdns.org/web |
+| API Swagger | http://localhost:8000/docs | https://odoo-inventario.duckdns.org/api/docs |
+| Grafana | http://localhost:3001 | http://34.68.166.29:3001 |
+| Prometheus | http://localhost:9090 | http://34.68.166.29:9090 |
+
+Credenciales demo: `admin` / `admin`
 
 ---
 
