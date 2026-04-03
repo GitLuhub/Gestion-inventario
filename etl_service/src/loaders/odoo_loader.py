@@ -1,4 +1,5 @@
 import xmlrpc.client
+import requests
 from typing import Dict, Any, Optional, List
 from tenacity import retry, stop_after_attempt, wait_exponential
 from utils.logger_util import get_logger
@@ -49,6 +50,52 @@ class OdooLoader:
         except Exception as e:
             self.logger.error(f"Error en _execute: {e}")
             raise
+
+    def _execute_json(self, model: str, method: str, ids: List[int]) -> Any:
+        """Usa JSON-RPC para métodos que retornan None (XML-RPC no soporta null).
+
+        Odoo 16 usa allow_none=False en su servidor XML-RPC, por lo que métodos
+        como action_apply_inventory() que retornan None fallan al serializar.
+        El endpoint /web/dataset/call_kw usa JSON que sí soporta null natively.
+        """
+        response = requests.post(
+            f'{self.url}/web/dataset/call_kw',
+            json={
+                'jsonrpc': '2.0',
+                'method': 'call',
+                'id': 1,
+                'params': {
+                    'model': model,
+                    'method': method,
+                    'args': [ids],
+                    'kwargs': {},
+                },
+            },
+            cookies={'session_id': self._get_session_id()},
+            timeout=30,
+        )
+        result = response.json()
+        if 'error' in result:
+            raise Exception(result['error'].get('data', {}).get('message', result['error']))
+        return result.get('result')
+
+    def _get_session_id(self) -> str:
+        """Obtiene un session_id de Odoo autenticado para usar con JSON-RPC."""
+        response = requests.post(
+            f'{self.url}/web/session/authenticate',
+            json={
+                'jsonrpc': '2.0',
+                'method': 'call',
+                'params': {
+                    'db': self.db,
+                    'login': self.user,
+                    'password': self.password,
+                },
+            },
+            timeout=30,
+        )
+        cookies = response.cookies
+        return cookies.get('session_id', '')
     
     @retry(
         stop=stop_after_attempt(3),
@@ -207,7 +254,8 @@ class OdooLoader:
                     quant_vals['lot_id'] = lot_id
                 quant_ids = [self.create_record('stock.quant', quant_vals)]
 
-            self._execute('stock.quant', 'action_apply_inventory', quant_ids)
+            # action_apply_inventory retorna None — usar JSON-RPC que sí soporta null
+            self._execute_json('stock.quant', 'action_apply_inventory', quant_ids)
 
             self.logger.info(
                 f"Ajuste aplicado: Producto {product_id}, "
