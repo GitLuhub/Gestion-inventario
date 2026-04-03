@@ -58,8 +58,10 @@ WORKDIR /app
 # Dependencias del builder
 COPY --from=builder /deps /deps
 
-# Código fuente y configuración de cron
+# Código fuente, Alembic y configuración de cron
 COPY --chown=etl:etl src/ ./src/
+COPY --chown=etl:etl alembic/ ./alembic/
+COPY --chown=etl:etl alembic.ini .
 COPY cronjob /etc/cron.d/etl-cron
 RUN chmod 0644 /etc/cron.d/etl-cron && crontab /etc/cron.d/etl-cron || true
 
