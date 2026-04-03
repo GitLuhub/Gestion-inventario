@@ -64,7 +64,7 @@ class OdooLoader:
     def read_record(self, model: str, ids: List[int], fields: List[str]) -> List[Dict]:
         if not ids:
             return []
-        return self._execute(model, 'read', ids, {'fields': fields})
+        return self._execute(model, 'read', ids, fields=fields)
     
     @retry(
         stop=stop_after_attempt(3),
@@ -167,49 +167,54 @@ class OdooLoader:
         return location_ids[0] if location_ids else None
     
     def adjust_inventory(
-        self, 
-        product_id: int, 
-        location_id: int, 
+        self,
+        product_id: int,
+        location_id: int,
         quantity: float,
         lot_name: str = None,
         expiration_date: str = None
     ) -> bool:
+        """Ajusta el inventario en Odoo 16 usando stock.quant directamente.
+
+        En Odoo 16, stock.inventory y stock.inventory.line fueron eliminados.
+        El flujo correcto es: escribir inventory_quantity en stock.quant
+        y luego llamar action_apply_inventory().
+        """
         try:
-            inventory_name = f"Ajuste ETL - {product_id} - {location_id}"
-            
-            inventory_vals = {
-                'name': inventory_name,
-                'location_ids': [(4, location_id)],
-                'product_ids': [(4, product_id)],
-                'state': 'draft',
-            }
-            
-            inventory_id = self.create_record('stock.inventory', inventory_vals)
-            
-            self._execute('stock.inventory', 'action_start', [inventory_id])
-            
-            line_vals = {
-                'inventory_id': inventory_id,
-                'product_id': product_id,
-                'location_id': location_id,
-                'product_qty': quantity,
-            }
-            
+            domain = [
+                ('product_id', '=', product_id),
+                ('location_id', '=', location_id),
+            ]
+
+            lot_id = None
             if lot_name:
                 lot_id = self._get_or_create_lot(product_id, lot_name, expiration_date)
                 if lot_id:
-                    line_vals['prod_lot_id'] = lot_id
-            
-            self.create_record('stock.inventory.line', line_vals)
-            
-            self._execute('stock.inventory', 'action_validate', [inventory_id])
-            
+                    domain.append(('lot_id', '=', lot_id))
+
+            quant_ids = self.search_record('stock.quant', domain)
+
+            if quant_ids:
+                self.write_record('stock.quant', quant_ids,
+                                  {'inventory_quantity': quantity})
+            else:
+                quant_vals = {
+                    'product_id': product_id,
+                    'location_id': location_id,
+                    'inventory_quantity': quantity,
+                }
+                if lot_id:
+                    quant_vals['lot_id'] = lot_id
+                quant_ids = [self.create_record('stock.quant', quant_vals)]
+
+            self._execute('stock.quant', 'action_apply_inventory', quant_ids)
+
             self.logger.info(
                 f"Ajuste aplicado: Producto {product_id}, "
                 f"Ubicación {location_id}, Cantidad {quantity}"
             )
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error al ajustar inventario: {e}")
             return False
@@ -220,23 +225,24 @@ class OdooLoader:
         lot_name: str,
         expiration_date: str = None
     ) -> Optional[int]:
+        # En Odoo 16 el modelo es stock.lot (antes stock.production.lot)
         lot_ids = self.search_record(
-            'stock.production.lot',
+            'stock.lot',
             [('name', '=', lot_name), ('product_id', '=', product_id)]
         )
-        
+
         if lot_ids:
             return lot_ids[0]
-        
+
         lot_vals = {
             'name': lot_name,
             'product_id': product_id,
         }
-        
+
         if expiration_date:
             lot_vals['expiration_date'] = expiration_date
-        
-        return self.create_record('stock.production.lot', lot_vals)
+
+        return self.create_record('stock.lot', lot_vals)
     
     def test_connection(self) -> bool:
         try:
