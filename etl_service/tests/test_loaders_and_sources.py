@@ -479,15 +479,20 @@ class TestOdooLoader:
 
     def test_adjust_inventory_returns_true_on_success(self):
         loader, _, mock_models = self._make_loader()
+        # New Odoo 16 flow: search stock.quant (empty) → create quant → action_apply_inventory via JSON-RPC
         mock_models.execute_kw.side_effect = [
-            101,   # create stock.inventory
-            None,  # action_start
-            102,   # create line
-            None,  # action_validate
+            [],   # search stock.quant → no existing quant
+            201,  # create stock.quant
         ]
-        result = loader.adjust_inventory(
-            product_id=1, location_id=5, quantity=10.0
-        )
+        mock_auth_resp = MagicMock()
+        mock_auth_resp.cookies.get.return_value = 'test_session_id'
+        mock_json_resp = MagicMock()
+        mock_json_resp.json.return_value = {'result': None}
+        with patch('loaders.odoo_loader.requests.post',
+                   side_effect=[mock_auth_resp, mock_json_resp]):
+            result = loader.adjust_inventory(
+                product_id=1, location_id=5, quantity=10.0
+            )
         assert result is True
 
     def test_adjust_inventory_returns_false_on_error(self):
