@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
+from collections import defaultdict
 from ..schemas import (
     InventoryAdjustmentCreate,
     InventoryAdjustmentResponse,
     StockQuantResponse,
     StockByLocationResponse,
+    DashboardStats,
+    LowStockProduct,
+    CategoryStats,
+    ReportSummaryResponse,
 )
 from ..utils.auth import get_current_user
 from ..utils.odoo_client import get_odoo_client, OdooClient
@@ -143,6 +148,151 @@ async def list_quants(
         ))
     
     return results
+
+
+@router.get("/stats", response_model=DashboardStats)
+async def get_inventory_stats(
+    current_user: dict = Depends(get_current_user),
+    odoo: OdooClient = Depends(get_odoo_client),
+):
+    """KPIs del dashboard principal — datos reales de Odoo."""
+    total_products = odoo.search_count(
+        'product.product',
+        [('active', '=', True), ('type', 'in', ['product', 'consumable'])],
+    )
+    total_locations = odoo.search_count(
+        'stock.location',
+        [('usage', '=', 'internal'), ('active', '=', True)],
+    )
+
+    try:
+        low_stock = odoo.search_count(
+            'product.product',
+            [('is_low_stock', '=', True), ('active', '=', True)],
+        )
+    except Exception:
+        low_stock = 0
+
+    products_for_value = odoo.search_read(
+        'product.product',
+        domain=[('active', '=', True), ('type', 'in', ['product', 'consumable'])],
+        fields=['qty_available', 'standard_price'],
+        limit=500,
+    )
+    total_value = sum(
+        p.get('qty_available', 0) * p.get('standard_price', 0)
+        for p in products_for_value
+    )
+
+    recent_adjustments = odoo.search_count(
+        'stock.inventory.adjustment',
+        [('state', '=', 'done')],
+    )
+    pending_operations = odoo.search_count(
+        'stock.inventory.adjustment',
+        [('state', 'in', ['draft', 'in_progress'])],
+    )
+
+    return DashboardStats(
+        total_products=total_products,
+        total_locations=total_locations,
+        low_stock_products=low_stock,
+        total_stock_value=round(total_value, 2),
+        recent_adjustments=recent_adjustments,
+        pending_operations=pending_operations,
+    )
+
+
+@router.get("/low-stock", response_model=List[LowStockProduct])
+async def list_low_stock_products(
+    limit: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+    odoo: OdooClient = Depends(get_odoo_client),
+):
+    """Productos con stock por debajo del mínimo definido."""
+    try:
+        products = odoo.search_read(
+            'product.product',
+            domain=[('is_low_stock', '=', True), ('active', '=', True)],
+            fields=['id', 'name', 'default_code', 'qty_available', 'min_stock_level'],
+            limit=limit,
+            order='qty_available ASC',
+        )
+    except Exception:
+        products = []
+
+    return [
+        LowStockProduct(
+            id=p['id'],
+            name=p['name'],
+            default_code=p.get('default_code') or None,
+            qty_available=p.get('qty_available', 0),
+            min_stock_level=p.get('min_stock_level', 0),
+        )
+        for p in products
+    ]
+
+
+@router.get("/reports/summary", response_model=ReportSummaryResponse)
+async def get_report_summary(
+    current_user: dict = Depends(get_current_user),
+    odoo: OdooClient = Depends(get_odoo_client),
+):
+    """Resumen agregado para la página de reportes."""
+    products = odoo.search_read(
+        'product.product',
+        domain=[('active', '=', True), ('type', 'in', ['product', 'consumable'])],
+        fields=['categ_id', 'qty_available', 'standard_price'],
+        limit=500,
+    )
+
+    total_products = len(products)
+    total_value = sum(
+        p.get('qty_available', 0) * p.get('standard_price', 0)
+        for p in products
+    )
+
+    try:
+        low_stock_count = odoo.search_count(
+            'product.product',
+            [('is_low_stock', '=', True), ('active', '=', True)],
+        )
+    except Exception:
+        low_stock_count = 0
+
+    out_of_stock_count = sum(1 for p in products if p.get('qty_available', 0) <= 0)
+
+    total_locations = odoo.search_count(
+        'stock.location',
+        [('usage', '=', 'internal'), ('active', '=', True)],
+    )
+
+    cat_map: dict = defaultdict(lambda: {'name': '', 'count': 0, 'value': 0.0})
+    for p in products:
+        cat = p.get('categ_id')
+        if cat:
+            cid, cname = cat[0], cat[1]
+            cat_map[cid]['name'] = cname
+            cat_map[cid]['count'] += 1
+            cat_map[cid]['value'] += p.get('qty_available', 0) * p.get('standard_price', 0)
+
+    top_categories = sorted(
+        [
+            CategoryStats(id=cid, name=v['name'], product_count=v['count'], total_value=round(v['value'], 2))
+            for cid, v in cat_map.items()
+        ],
+        key=lambda c: c.total_value,
+        reverse=True,
+    )[:8]
+
+    return ReportSummaryResponse(
+        total_products=total_products,
+        total_locations=total_locations,
+        low_stock_count=low_stock_count,
+        out_of_stock_count=out_of_stock_count,
+        total_stock_value=round(total_value, 2),
+        top_categories=top_categories,
+    )
 
 
 @router.get("/by-location/{location_id}", response_model=StockByLocationResponse)

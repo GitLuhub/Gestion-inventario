@@ -68,6 +68,30 @@ export interface DashboardStats {
   pending_operations: number
 }
 
+export interface LowStockProduct {
+  id: number
+  name: string
+  default_code?: string
+  qty_available: number
+  min_stock_level: number
+}
+
+export interface CategoryStats {
+  id: number
+  name: string
+  product_count: number
+  total_value: number
+}
+
+export interface ReportSummary {
+  total_products: number
+  total_locations: number
+  low_stock_count: number
+  out_of_stock_count: number
+  total_stock_value: number
+  top_categories: CategoryStats[]
+}
+
 export interface TokenResponse {
   access_token: string
   token_type: string
