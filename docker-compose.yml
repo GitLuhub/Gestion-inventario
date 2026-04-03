@@ -216,13 +216,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        API_INTERNAL_URL: http://api_gateway:8000
     image: inventory-frontend:latest
     container_name: inventory_frontend
     hostname: frontend
     env_file:
       - .env
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      API_INTERNAL_URL: http://api_gateway:8000
       NEXT_PUBLIC_APP_NAME: "Gestión de Inventario"
       NODE_ENV: production
     ports:
