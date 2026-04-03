@@ -17,13 +17,13 @@ import {
 } from '@heroicons/react/24/outline'
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { name: 'Productos', href: '/dashboard/products', icon: CubeIcon },
-  { name: 'Inventario', href: '/dashboard/inventory', icon: AdjustmentsHorizontalIcon },
-  { name: 'Ubicaciones', href: '/dashboard/locations', icon: MapPinIcon },
-  { name: 'Recepciones', href: '/dashboard/inventory', icon: ArrowDownTrayIcon },
-  { name: 'Entregas', href: '/dashboard/inventory', icon: ArrowUpTrayIcon },
-  { name: 'Informes', href: '/dashboard/reports', icon: ChartBarIcon },
+  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon, exact: true },
+  { name: 'Productos', href: '/dashboard/products', icon: CubeIcon, exact: false },
+  { name: 'Inventario', href: '/dashboard/inventory', icon: AdjustmentsHorizontalIcon, exact: true },
+  { name: 'Ubicaciones', href: '/dashboard/locations', icon: MapPinIcon, exact: true },
+  { name: 'Recepciones', href: '/dashboard/receipts', icon: ArrowDownTrayIcon, exact: true },
+  { name: 'Entregas', href: '/dashboard/deliveries', icon: ArrowUpTrayIcon, exact: true },
+  { name: 'Informes', href: '/dashboard/reports', icon: ChartBarIcon, exact: true },
 ]
 
 export function Sidebar() {
@@ -43,7 +43,9 @@ export function Sidebar() {
         
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+            const isActive = item.exact
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link
                 key={item.name}
