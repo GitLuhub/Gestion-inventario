@@ -30,6 +30,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# NEXT_PUBLIC_API_URL debe declararse aquí (bake-time) para quedar en el bundle JS
+# API_INTERNAL_URL se usa en rewrites() server-side — apunta al hostname Docker interno
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG API_INTERNAL_URL=http://api_gateway:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
