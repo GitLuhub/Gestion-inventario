@@ -218,6 +218,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_ODOO_URL: ${NEXT_PUBLIC_ODOO_URL:-/web}
         API_INTERNAL_URL: http://api_gateway:8000
     image: inventory-frontend:latest
     container_name: inventory_frontend
@@ -226,6 +227,7 @@ services:
       - .env
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_ODOO_URL: ${NEXT_PUBLIC_ODOO_URL:-/web}
       API_INTERNAL_URL: http://api_gateway:8000
       NEXT_PUBLIC_APP_NAME: "Gestión de Inventario"
       NODE_ENV: production
